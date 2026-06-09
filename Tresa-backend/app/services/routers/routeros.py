@@ -96,14 +96,24 @@ def enable_snmp(router: Router) -> None:
         filters = api.get_resource("/ip/firewall/filter")
         comment = "Tresa: allow SNMP monitoring"
         rules = filters.get(comment=comment)
-        rule_params = {
+
+        all_interfaces = api.get_resource("/interface").get()
+        tunnel_exists = any(i.get("name") == "tresa-tunnel" for i in all_interfaces)
+
+        rule_params: dict[str, str] = {
             "chain": "input",
-            "in-interface": "tresa-tunnel",
             "protocol": "udp",
             "dst-port": str(settings.snmp_port),
             "action": "accept",
             "comment": comment,
         }
+        if tunnel_exists:
+            rule_params["in-interface"] = "tresa-tunnel"
+        else:
+            # Tunnel not provisioned yet; restrict by source address instead.
+            src = settings.chr_tunnel_local_address.split("/")[0]
+            rule_params["src-address"] = src
+
         if rules and rules[0].get(".id"):
             filters.set(id=rules[0][".id"], **rule_params)
         else:

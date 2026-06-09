@@ -420,6 +420,11 @@ def provision_router(session: Session, router: Router, tunnel_ip: str | None = N
             "customer": router.ppp_username,
             "port": router.nat_port,
         })
+        if router.snmp_configured and not router.snmp_nat_rule_id:
+            try:
+                ensure_snmp_forwarding(session, router)
+            except Exception:
+                pass
         return router
     except Exception as exc:
         router.status = "provisioning_failed"

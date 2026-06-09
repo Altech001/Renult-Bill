@@ -157,8 +157,21 @@ def enable_router_snmp(
             f"Could not enable SNMP on the physical MikroTik: {message}",
         ) from exc
 
+    chr_forwarding_enabled = False
+    chr_pending_provisioning = False
     try:
         ensure_snmp_forwarding(session, db_router)
+        chr_forwarding_enabled = True
+    except ValueError as exc:
+        if "provisioning" in str(exc).lower():
+            # Tunnel not yet provisioned — physical SNMP is fine, CHR NAT will be
+            # configured automatically once the tunnel comes up.
+            chr_pending_provisioning = True
+        else:
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                f"SNMP was enabled on the physical router, but CHR forwarding failed: {exc}",
+            ) from exc
     except Exception as exc:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
@@ -168,6 +181,22 @@ def enable_router_snmp(
     db_router.snmp_configured = True
     session.add(db_router)
     session.commit()
+
+    if chr_pending_provisioning:
+        return SnmpEnableResponse(
+            success=False,
+            router_id=db_router.id,
+            router_name=db_router.name,
+            physical_router_enabled=True,
+            chr_forwarding_enabled=False,
+            verified=False,
+            uptime_seconds=None,
+            message=(
+                "SNMP was enabled on the physical MikroTik. "
+                "CHR forwarding will be configured automatically once the tunnel is provisioned."
+            ),
+        )
+
     poll_router(session, db_router, notify_transitions=False)
     verified = db_router.snmp_status == "online"
     return SnmpEnableResponse(
@@ -175,7 +204,7 @@ def enable_router_snmp(
         router_id=db_router.id,
         router_name=db_router.name,
         physical_router_enabled=True,
-        chr_forwarding_enabled=bool(db_router.snmp_nat_rule_id),
+        chr_forwarding_enabled=chr_forwarding_enabled,
         verified=verified,
         uptime_seconds=db_router.snmp_uptime_seconds,
         message=(
