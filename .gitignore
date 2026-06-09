@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+client_secret*.json
+*.apps.googleusercontent.com.json
+
+# Dependencies and virtual environments
+node_modules/
+.venv/
+
+# Generated files
+dist/
+dist-ssr/
+__pycache__/
+*.py[oc]
+build/
+wheels/
+*.egg-info/
+
+# Deployment and editor metadata
+.vercel/
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f766e" />
+    <title id="title">Logged out</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:wght@500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript">
+        function openLogin() {
+            if (window.name != 'hotspot_logout') return true;
+            open('$(link-login)', '_blank', '');
+            window.close();
+            return false;
+        }
+    </script>
+</head>
+
+<body>
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="svg-defs" aria-hidden="true">
+        <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </symbol>
+    </svg>
+
+    <div class="portal-backdrop"></div>
+    <svg class="backdrop-svg backdrop-svg--tl" viewBox="0 0 200 120" fill="none" aria-hidden="true">
+        <path d="M0 80 Q50 20 100 60 T200 40" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+    </svg>
+
+    <main class="portal-wrap">
+        <section class="glass-panel page-panel">
+            <div class="panel-accent"></div>
+            <div class="panel-body">
+                <div class="state-icon state-icon--logout" aria-hidden="true">
+                    <svg class="icon icon-xl" viewBox="0 0 24 24"><use xlink:href="#" href="#i-logout"></use></svg>
+                </div>
+                <h1 class="portal-title">Logged out</h1>
+                <p class="portal-lead">Session ended for <strong>$(username)</strong>.</p>
+
+                <table class="status-table">
+                    <tr><td>IP</td><td>$(ip)</td></tr>
+                    <tr><td>MAC</td><td>$(mac)</td></tr>
+                    <tr><td>Uptime</td><td>$(uptime)</td></tr>
+                    <tr><td>Download</td><td>$(bytes-out-nice)</td></tr>
+                    <tr><td>Upload</td><td>$(bytes-in-nice)</td></tr>
+                    $(if remain-bytes-total)
+                    <tr><td>Quota left</td><td>$(remain-bytes-total-nice)</td></tr>
+                    $(endif)
+                    $(if session-time-left)
+                    <tr><td>Time left</td><td>$(session-time-left)</td></tr>
+                    $(endif)
+                </table>
+
+                <form action="$(link-login)" name="login" onsubmit="return openLogin()">
+                    <button class="btn-connect" type="submit">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                        Log in again
+                    </button>
+                </form>
+            </div>
+            <footer class="panel-footer">
+                <span class="footer-mark">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                    __ROUTER_NAME__
+                </span>
+                <span>Powered by Renault Billing</span>
+            </footer>
+        </section>
+    </main>
+    <script type="text/javascript">
+        document.getElementById('title').textContent = window.location.hostname + ' > logout';
+    </script>
+</body>
+
+</html>

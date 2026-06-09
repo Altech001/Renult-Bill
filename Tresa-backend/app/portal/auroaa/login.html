@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title id="title"></title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:wght@500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="svg-defs" aria-hidden="true">
+        <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-ticket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 9a3 3 0 0 1 0 6v1a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-1a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M9 9h.01M9 15h.01M15 9h.01M15 15h.01"/>
+        </symbol>
+        <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/><path d="M6 20v-1a6 6 0 0 1 12 0v1"/>
+        </symbol>
+        <symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m7.5 4.27 9 5.15M21 8v8a2 2 0 0 1-1 1.73l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.73l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>
+        </symbol>
+        <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
+        </symbol>
+        <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </symbol>
+    </svg>
+
+    $(if chap-id)
+    <form name="sendin" action="$(link-login-only)" method="post" style="display:none;">
+        <input type="hidden" name="username" />
+        <input type="hidden" name="password" />
+        <input type="hidden" name="dst" value="$(link-orig)" />
+        <input type="hidden" name="popup" value="true" />
+    </form>
+    <script type="text/javascript" src="md5.js"></script>
+    <script type="text/javascript" src="voucher-auth.js"></script>
+    <script type="text/javascript">
+        function doVoucherLogin() {
+            return VoucherAuth.doVoucherLogin({
+                sendin: document.sendin,
+                usernameEl: document.getElementById('voucher-username'),
+                passwordEl: document.getElementById('voucher-password'),
+                chapId: '$(chap-id)',
+                chapChallenge: '$(chap-challenge)',
+                loginButton: document.getElementById('voucher-login-btn')
+            });
+        }
+        function doMemberLogin() {
+            return VoucherAuth.doMemberLogin({
+                sendin: document.sendin,
+                usernameEl: document.getElementById('member-username'),
+                passwordEl: document.getElementById('member-password'),
+                chapId: '$(chap-id)',
+                chapChallenge: '$(chap-challenge)'
+            });
+        }
+    </script>
+    $(endif)
+
+    <div class="portal-backdrop"></div>
+    <svg class="backdrop-svg backdrop-svg--tl" viewBox="0 0 200 120" fill="none" aria-hidden="true">
+        <path d="M0 80 Q50 20 100 60 T200 40" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+        <path d="M0 100 Q60 50 120 75 T200 55" stroke="currentColor" stroke-width="1" opacity="0.4"/>
+    </svg>
+    <svg class="backdrop-svg backdrop-svg--br" viewBox="0 0 160 100" fill="none" aria-hidden="true">
+        <circle cx="140" cy="80" r="50" stroke="currentColor" stroke-width="1"/>
+        <circle cx="140" cy="80" r="35" stroke="currentColor" stroke-width="0.75" opacity="0.7"/>
+    </svg>
+
+    <main class="portal-wrap">
+        <section class="glass-panel">
+            <div class="panel-accent"></div>
+            <div class="panel-body">
+                <header class="panel-brand">
+                    <div class="brand-icon" aria-hidden="true">
+                        <svg class="icon icon-xl" viewBox="0 0 24 24"><use xlink:href="#" href="#i-wifi"></use></svg>
+                    </div>
+                    <h1 class="portal-title">__ROUTER_NAME__ WiFi</h1>
+                </header>
+
+                <p class="portal-lead">
+                    Sign in with your voucher or member account.
+                </p>
+
+                <nav class="tab-row" role="tablist">
+                    <button id="btnvrc" type="button" class="tab-btn active" onclick="voucher();">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-ticket"></use></svg>
+                        Voucher
+                    </button>
+                    <button id="btnmem" type="button" class="tab-btn" onclick="member();">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-user"></use></svg>
+                        Member
+                    </button>
+                </nav>
+
+                <p id="infologin" class="login-hint"></p>
+                $(if error)<div class="notice">$(error)</div>$(endif)
+
+                <div id="voucher-panel">
+                    <form class="login-form" autocomplete="off" name="voucher-login" id="voucher-login" action="$(link-login-only)" method="post"
+                        $(if chap-id) onSubmit="return doVoucherLogin()" $(endif)>
+                        <input type="hidden" name="dst" value="$(link-orig)" />
+                        <input type="hidden" name="popup" value="true" />
+                        <div class="input-wrap">
+                            <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-ticket"></use></svg>
+                            <input class="input-field username" name="username" id="voucher-username" type="text" placeholder="Voucher code" value="$(username)" />
+                        </div>
+                        <input id="voucher-password" name="password" type="hidden" />
+                        <button class="btn-connect" type="submit" id="voucher-login-btn">
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                            Connect
+                        </button>
+                    </form>
+                </div>
+                <div id="member-panel" style="display:none">
+                    <form class="login-form" autocomplete="off" name="member-login" id="member-login" action="$(link-login-only)" method="post"
+                        $(if chap-id) onSubmit="return doMemberLogin()" $(endif)>
+                        <input type="hidden" name="dst" value="$(link-orig)" />
+                        <input type="hidden" name="popup" value="true" />
+                        <div class="input-wrap stacked-top">
+                            <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-user"></use></svg>
+                            <input class="input-field username" name="username" id="member-username" type="text" placeholder="Username" />
+                        </div>
+                        <div class="input-wrap stacked-bottom">
+                            <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-user"></use></svg>
+                            <input class="input-field password" name="password" id="member-password" type="password" placeholder="Password" />
+                        </div>
+                        <button class="btn-connect" type="submit">
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                            Connect
+                        </button>
+                    </form>
+                </div>
+
+                $(if trial == 'yes')
+                <p class="trial-link">Free trial: <a href="$(link-login-only)?dst=$(link-orig-esc)&amp;username=T-$(mac-esc)">Connect now</a></p>
+                $(endif)
+
+                <div class="voucher-instructions" data-live-voucher-instructions><strong>Where to get vouchers:</strong> Buy a package below or enter an existing voucher.</div>
+                <!-- PACKAGES_SECTION_START -->
+                <div class="section-head" style="display:block">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-package"></use></svg>
+                    Packages
+                </div>
+                <div id="packagesList" class="package-list" style="display:block">
+                    <div class="package-tile loading"><span class="tile-name">Loading packages…</span></div>
+                </div>
+                <!-- PACKAGES_SECTION_END -->
+                
+            </div>
+
+            <footer class="panel-footer">
+                <span class="footer-mark">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                    __ROUTER_NAME__
+                </span>
+                <span>Powered by Renault Billing</span>
+            </footer>
+        </section>
+    </main>
+
+    <script src="jquery.js"></script>
+    <script type="text/javascript">
+        document.getElementById('title').textContent = window.location.hostname + ' > login';
+
+        var infologin = document.getElementById('infologin');
+        var voucherUsername = document.getElementById('voucher-username');
+        var voucherPassword = document.getElementById('voucher-password');
+        var voucherPanel = document.getElementById('voucher-panel');
+        var memberPanel = document.getElementById('member-panel');
+        var btnVrc = document.getElementById('btnvrc');
+        var btnMem = document.getElementById('btnmem');
+
+        infologin.textContent = 'Enter your voucher code below.';
+        voucherUsername.focus();
+
+        function setTabActive(isVoucher) {
+            btnVrc.classList.toggle('active', isVoucher);
+            btnMem.classList.toggle('active', !isVoucher);
+        }
+
+        function voucher() {
+            setTabActive(true);
+            voucherPanel.style.display = 'block';
+            memberPanel.style.display = 'none';
+            infologin.textContent = 'Enter your voucher code below.';
+            voucherUsername.focus();
+        }
+
+        function member() {
+            setTabActive(false);
+            voucherPanel.style.display = 'none';
+            memberPanel.style.display = 'block';
+            infologin.textContent = 'Enter your username and password.';
+            document.getElementById('member-username').focus();
+        }
+
+        VoucherAuth.boot({
+            usernameEl: voucherUsername,
+            passwordEl: voucherPassword,
+            voucherForm: document.getElementById('voucher-login'),
+            hasError: !!document.querySelector('.notice'),
+            onSwitchVoucherTab: voucher,
+            doVoucherLogin: typeof doVoucherLogin === 'function' ? doVoucherLogin : null
+        });
+
+        (function ($) {
+            var list = $('#packagesList');
+            var routerName = '__ROUTER_NAME__';
+            var apiBase = '__PORTAL_API_BASE__';
+
+            $.ajax({
+                url: apiBase + '/portal/' + encodeURIComponent(routerName) + '/packages',
+                type: 'GET',
+                dataType: 'json',
+                success: function (data) {
+                    var profiles = data && data.data && data.data.voucher ? data.data.voucher : [];
+                    if (data.success && profiles.length > 0) {
+                        var html = '';
+                        $.each(profiles, function (i, profile) {
+                            var price = 'UGX ' + Number(profile.total || 0).toLocaleString();
+                            html += '<div class="package-tile">' +
+                                '<div class="tile-left"><span class="tile-name">' + profile.profile + '</span>' +
+                                '<span class="tile-meta">' + profile.limit + ' · ' + profile.data + ' · ' + profile.devices + ' device(s)</span></div>' +
+                                '<span class="tile-price">' + price + '</span></div>';
+                        });
+                        list.html(html);
+                    } else {
+                        list.html('<div class="package-tile empty"><span class="tile-name">No packages listed</span></div>');
+                    }
+                },
+                error: function () {
+                    list.html('<div class="package-tile empty"><span class="tile-name">Packages unavailable</span></div>');
+                }
+            });
+        })(window.jQuery);
+    </script>
+<!-- ═══ HS*Agent Live Settings (auto-injected) ═══ -->
+<script>
+(function(){
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '__PORTAL_API_BASE__/portal/__ROUTER_NAME__', true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        var s = JSON.parse(xhr.responseText);
+        var titleEl = document.querySelector('.portal-title');
+        var leadEl = document.querySelector('.portal-lead');
+        if (titleEl && s.title) titleEl.textContent = s.title;
+        if (leadEl && s.description) leadEl.textContent = s.description;
+        var supportEl = document.querySelector('.help-links.support-links[data-live-support]');
+        if (supportEl && s.contact_numbers && s.contact_numbers.length) {
+          var phoneSvg = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+          supportEl.innerHTML = s.contact_numbers.filter(function(c){ return c && c.number; }).map(function(c) {
+            var label = (c.label || 'Support').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            var num = String(c.number).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            var tel = String(c.number).replace(/\s+/g,'');
+            return '<a class="help-link" href="tel:'+tel+'"><span class="link-icon" aria-hidden="true">'+phoneSvg+'</span><span class="help-link-text"><strong>'+label+'</strong><span>'+num+'</span></span></a>';
+          }).join('');
+        }
+        var voucherEl = document.querySelector('[data-live-voucher-instructions]');
+        if (voucherEl && s.voucher_instructions) {
+          voucherEl.innerHTML = '<strong>Where to get vouchers:</strong> ' + String(s.voucher_instructions).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          voucherEl.style.display = '';
+        }
+        var contactEl = document.querySelector('[data-live-contact]');
+        if (contactEl && s.contact_display) contactEl.innerHTML = s.contact_display;
+        var marqueeEl = document.querySelector('[data-live-marquee], marquee');
+        if (marqueeEl && s.marquee_text) marqueeEl.innerHTML = s.marquee_text;
+      }
+    };
+    xhr.send();
+  } catch(e){}
+})();
+</script>
+<!-- ═══ HS*Agent Feedback Form (auto‑injected) ═══ -->
+<style>
+#hs-fb-btn{position:fixed;bottom:max(16px,env(safe-area-inset-bottom));right:max(8px,env(safe-area-inset-right));z-index:99999;width:52px;height:52px;border-radius:50%;background:#0000ff;color:#fff;border:none;box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .2s}
+#hs-fb-btn:hover{transform:scale(1.1)}
+#hs-fb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000}
+#hs-fb-modal{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));right:max(8px,env(safe-area-inset-right));z-index:100001;width:340px;max-width:calc(100vw - 16px);background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.25);overflow:hidden;display:none;font-family:system-ui,-apple-system,sans-serif}
+#hs-fb-header{background:#0000ff;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+#hs-fb-header h4{margin:0;font-size:15px;font-weight:600}
+#hs-fb-close{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 4px}
+#hs-fb-body{padding:16px;max-height:60vh;overflow-y:auto}
+#hs-fb-body input,#hs-fb-body textarea{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;font-size:14px;box-sizing:border-box;font-family:inherit}
+#hs-fb-body textarea{min-height:80px;resize:vertical}
+#hs-fb-body button[type=submit]{width:100%;padding:10px;border:none;border-radius:8px;background:#0000ff;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+#hs-fb-body button[type=submit]:disabled{opacity:.5;cursor:not-allowed}
+.hs-fb-tabs{display:flex;border-bottom:2px solid #eee;margin-bottom:12px}
+.hs-fb-tab{flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:600;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none}
+.hs-fb-tab.active{color:#0000ff;border-bottom-color:#0000ff}
+.hs-fb-msg{padding:8px 12px;border-radius:10px;margin-bottom:6px;max-width:85%;font-size:13px;line-height:1.4;word-wrap:break-word}
+.hs-fb-msg.customer{background:#0000ff;color:#fff;align-self:flex-end;margin-left:auto}
+.hs-fb-msg.boss{background:#e8f0fe;align-self:flex-start}
+.hs-fb-msg-time{font-size:10px;opacity:.6;margin-top:2px}
+.hs-fb-thread{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.hs-fb-success{background:#e8f5e9;color:#2e7d32;padding:12px;border-radius:8px;text-align:center;font-size:13px}
+.hs-fb-empty{text-align:center;color:#999;padding:20px;font-size:13px}
+.hs-fb-conv-item{padding:10px;border:1px solid #eee;border-radius:8px;margin-bottom:8px;cursor:pointer}
+.hs-fb-conv-item:hover{background:#f5f5f5}
+.hs-fb-badge{display:inline-block;background:#ff4444;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;text-align:center;line-height:18px;position:absolute;top:-4px;right:-4px}
+</style>
+
+<button id="hs-fb-btn" onclick="hsFbToggle()" title="Feedback & Support" style="position:fixed">
+  <span>💬</span>
+</button>
+<div id="hs-fb-overlay" onclick="hsFbToggle()"></div>
+<div id="hs-fb-modal">
+  <div id="hs-fb-header">
+    <h4>💬 Feedback & Support</h4>
+    <button id="hs-fb-close" onclick="hsFbToggle()">✕</button>
+  </div>
+  <div id="hs-fb-body">
+    <div class="hs-fb-tabs">
+      <button class="hs-fb-tab active" onclick="hsFbSwitchTab('send',this)">Send Feedback</button>
+      <button class="hs-fb-tab" onclick="hsFbSwitchTab('search',this)">My Chats</button>
+    </div>
+
+    <!-- SEND TAB -->
+    <div id="hs-fb-send">
+      <form id="hs-fb-form" onsubmit="return hsFbSubmit(event)">
+        <input type="text" id="hs-fb-name" placeholder="Your name (optional)">
+        <input type="tel" id="hs-fb-phone" placeholder="Phone number *" required>
+        <textarea id="hs-fb-message" placeholder="Your message *" required></textarea>
+        <button type="submit" id="hs-fb-submit-btn">Send Feedback</button>
+      </form>
+      <div id="hs-fb-result" style="display:none"></div>
+    </div>
+
+    <!-- SEARCH TAB -->
+    <div id="hs-fb-search" style="display:none">
+      <input type="tel" id="hs-fb-search-phone" placeholder="Enter your phone number" onkeyup="if(event.key==='Enter')hsFbSearch()">
+      <button type="button" onclick="hsFbSearch()" style="width:100%;padding:10px;border:none;border-radius:8px;background:#0000ff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px">Search My Chats</button>
+      <div id="hs-fb-search-results"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var API='https://hspotagent.com/api/hotspot-feedback',SEARCH='https://hspotagent.com/api/hotspot-feedback/search',RN='UU';
+  window.hsFbToggle=function(){
+    var m=document.getElementById('hs-fb-modal'),o=document.getElementById('hs-fb-overlay');
+    var show=m.style.display==='none'||!m.style.display;
+    m.style.display=show?'block':'none';
+    o.style.display=show?'block':'none';
+  };
+  window.hsFbSwitchTab=function(tab,el){
+    document.getElementById('hs-fb-send').style.display=tab==='send'?'block':'none';
+    document.getElementById('hs-fb-search').style.display=tab==='search'?'block':'none';
+    document.querySelectorAll('.hs-fb-tab').forEach(function(t){t.classList.remove('active')});
+    el.classList.add('active');
+  };
+  window.hsFbSubmit=function(e){
+    e.preventDefault();
+    var btn=document.getElementById('hs-fb-submit-btn');
+    btn.disabled=true;btn.textContent='Sending...';
+    var body=JSON.stringify({
+      router_name:RN,
+      phone:document.getElementById('hs-fb-phone').value,
+      message:document.getElementById('hs-fb-message').value,
+      customer_name:document.getElementById('hs-fb-name').value||null
+    });
+    fetch(API,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:body})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      document.getElementById('hs-fb-form').style.display='none';
+      var res=document.getElementById('hs-fb-result');
+      res.style.display='block';
+      res.innerHTML='<div class="hs-fb-success">✅ '+( d.message||'Feedback sent!')+'</div><button onclick="hsFbReset()" style="width:100%;margin-top:10px;padding:8px;border:1px solid #0000ff;border-radius:8px;background:#fff;color:#0000ff;cursor:pointer;font-weight:600">Send Another</button>';
+    })
+    .catch(function(){
+      btn.disabled=false;btn.textContent='Send Feedback';
+      alert('Failed to send. Please try again.');
+    });
+    return false;
+  };
+  window.hsFbReset=function(){
+    document.getElementById('hs-fb-form').style.display='block';
+    document.getElementById('hs-fb-result').style.display='none';
+    document.getElementById('hs-fb-message').value='';
+    document.getElementById('hs-fb-submit-btn').disabled=false;
+    document.getElementById('hs-fb-submit-btn').textContent='Send Feedback';
+  };
+  window.hsFbSearch=function(){
+    var phone=document.getElementById('hs-fb-search-phone').value;
+    if(!phone)return;
+    var res=document.getElementById('hs-fb-search-results');
+    res.innerHTML='<div style="text-align:center;padding:12px;color:#666">Searching...</div>';
+    fetch(SEARCH+'?phone='+encodeURIComponent(phone)+'&router_name='+encodeURIComponent(RN),{headers:{'Accept':'application/json'}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.conversations||!d.conversations.length){
+        res.innerHTML='<div class="hs-fb-empty">No conversations found for this number.</div>';
+        return;
+      }
+      var html='';
+      d.conversations.forEach(function(c){
+        html+='<div class="hs-fb-conv-item" onclick="hsFbShowThread('+JSON.stringify(c).replace(/"/g,'&quot;')+')">';
+        html+='<div style="font-weight:600;font-size:13px">'+(c.customer_name||c.phone)+'</div>';
+        html+='<div style="font-size:11px;color:#888">Status: '+c.status+' · '+(c.messages?c.messages.length:0)+' messages</div>';
+        html+='</div>';
+      });
+      res.innerHTML=html;
+    })
+    .catch(function(){res.innerHTML='<div class="hs-fb-empty">Search failed. Please try again.</div>'});
+  };
+  window.hsFbShowThread=function(conv){
+    var res=document.getElementById('hs-fb-search-results');
+    var html='<button onclick="hsFbSearch()" style="background:none;border:none;color:#0000ff;cursor:pointer;font-size:13px;margin-bottom:8px">← Back to list</button>';
+    html+='<div class="hs-fb-thread">';
+    if(conv.messages&&conv.messages.length){
+      conv.messages.forEach(function(m){
+        html+='<div class="hs-fb-msg '+(m.sender_type||'customer')+'">';
+        html+=m.message;
+        html+='<div class="hs-fb-msg-time">'+(m.created_at?new Date(m.created_at).toLocaleString():'')+'</div>';
+        html+='</div>';
+      });
+    }else{
+      html+='<div class="hs-fb-empty">No messages</div>';
+    }
+    html+='</div>';
+    // Quick reply
+    html+='<form onsubmit="return hsFbQuickReply(event,'+conv.id+')">';
+    html+='<textarea id="hs-fb-quick-msg" placeholder="Type a reply..." required style="min-height:60px"></textarea>';
+    html+='<button type="submit" style="width:100%;padding:8px;border:none;border-radius:8px;background:#0000ff;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Reply</button>';
+    html+='</form>';
+    res.innerHTML=html;
+  };
+  window.hsFbQuickReply=function(e,convId){
+    e.preventDefault();
+    var msg=document.getElementById('hs-fb-quick-msg').value;
+    var phone=document.getElementById('hs-fb-search-phone').value;
+    if(!msg||!phone)return false;
+    var body=JSON.stringify({router_name:RN,phone:phone,message:msg});
+    fetch(API,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:body})
+    .then(function(r){return r.json()})
+    .then(function(){hsFbSearch()})
+    .catch(function(){alert('Failed to send reply.')});
+    return false;
+  };
+})();
+</script>
+<!-- ═══ /HS*Agent Feedback Form ═══ -->
+</body>
+
+</html>

@@ -1,0 +1,28 @@
+HOTSPOT PORTAL SETUP (UNVERIFIED) - MANUAL UPLOAD REQUIRED
+============================================================
+
+Router: UU
+Currency: UGX
+Status: ⚠️ Automatic upload failed
+Error: Failed to connect to router at app.hspotagent.com:37015. Please check router IP, username, and password.
+
+MANUAL UPLOAD INSTRUCTIONS:
+1. Open WinBox and connect to your router
+2. Go to Files on the left sidebar
+3. Create a folder named: hotspot_unverified_UU
+4. Upload ALL files and folders from this ZIP into that folder
+5. Go to IP > Hotspot > Server Profiles
+6. Double-click your hotspot profile (usually "hsprof1")
+7. Set the "HTML Directory" to: hotspot_unverified_UU
+8. Click OK to save
+
+API INTEGRATION:
+Your portal can fetch WiFi packages from:
+  " . config('app.url') . "/api/router-profiles/UU
+
+TROUBLESHOOTING:
+- Ensure all files AND subfolders (css, js, font, img) are uploaded
+- Check that the html-directory exactly matches the folder name
+- Verify the router has internet access for API calls to work
+
+For support, contact us via Telegram.

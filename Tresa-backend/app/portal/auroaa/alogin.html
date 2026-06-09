@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="2; url=$(link-redirect)">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f766e" />
+    <title id="title">Connected</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:wght@500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript">
+        function startClock() {
+            $(if popup == 'true')
+            window.open('$(link-status)', 'hotspot_status', 'toolbar=0,location=0,directories=0,status=0,menubars=0,resizable=1,width=320,height=280');
+            $(endif)
+            setTimeout(function () {
+                window.location.href = '$(link-redirect)';
+            }, 2000);
+        }
+    </script>
+</head>
+
+<body onload="startClock()">
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="svg-defs" aria-hidden="true">
+        <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+        </symbol>
+    </svg>
+
+    <div class="portal-backdrop"></div>
+    <svg class="backdrop-svg backdrop-svg--br" viewBox="0 0 160 100" fill="none" aria-hidden="true">
+        <circle cx="140" cy="80" r="50" stroke="currentColor" stroke-width="1"/>
+    </svg>
+
+    <main class="portal-wrap">
+        <section class="glass-panel page-panel">
+            <div class="panel-accent"></div>
+            <div class="panel-body">
+                <div class="state-icon state-icon--success" aria-hidden="true">
+                    <svg class="icon icon-xl" viewBox="0 0 24 24"><use xlink:href="#" href="#i-check"></use></svg>
+                </div>
+                <h1 class="portal-title">Connected</h1>
+                <p class="portal-lead">You are online. Redirecting…</p>
+                <p class="login-hint"><a href="$(link-login)">Click here</a> if you are not redirected.</p>
+            </div>
+            <footer class="panel-footer">
+                <span class="footer-mark">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#" href="#i-wifi"></use></svg>
+                    __ROUTER_NAME__
+                </span>
+                <span>Powered by Renault Billing</span>
+            </footer>
+        </section>
+    </main>
+    <script type="text/javascript">
+        document.getElementById('title').textContent = window.location.hostname + ' > connected';
+    </script>
+</body>
+
+</html>

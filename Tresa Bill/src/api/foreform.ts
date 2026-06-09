@@ -1,0 +1,956 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "https://renult.vercel.app";
+const API_BASE_URL = configuredApiUrl.replace(/^http:\/\/renult\.vercel\.app/i, "https://renult.vercel.app").replace(/\/$/, "");
+const LUCOPAY_API_BASE_URL = "https://lucopay-backend.vercel.app";
+const AUTH_TOKEN_KEY = "renult:auth-token";
+const AUTH_USER_KEY = "renult:auth-user";
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  full_name: string;
+  phone_number: string | null;
+  is_verified: boolean;
+  avatar_url: string | null;
+  auth_provider: string;
+  account_type: "owner" | "staff";
+  staff_branch_id: string | null;
+  staff_role: string | null;
+  staff_permissions: string[];
+  share_percentage: number;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type?: string;
+  user: UserResponse;
+}
+
+export interface BranchResponse {
+  id: string;
+  name: string;
+  avatar_url: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StaffResponse {
+  id: string;
+  branch_id: string;
+  full_name: string;
+  email: string;
+  phone_number: string | null;
+  role: string;
+  permissions: string[];
+  share_percentage: number;
+  is_active: boolean;
+  user_id: string | null;
+  avatar_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RevenueShareResponse {
+  branch_id: string;
+  gross_sales: number;
+  allocated_percentage: number;
+  owner_percentage: number;
+  owner_amount: number;
+  current_user_percentage: number;
+  current_user_amount: number;
+  agents: Array<{ staff_id: string; full_name: string; percentage: number; amount: number }>;
+}
+
+export interface NotificationResponse {
+  id: string;
+  category: string;
+  title: string;
+  body: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  notifications: NotificationResponse[];
+  unread_count: number;
+  total: number;
+}
+
+export interface TicketCategoryResponse {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface TicketResponse {
+  id: string;
+  branch_id: string;
+  category_id: string;
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  assigned_staff_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Router Interfaces ──────────────────────────────────────────
+export interface RouterResponse {
+  id: string;
+  branch_id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  plaintext_login: boolean;
+  location: string | null;
+  description: string | null;
+  is_active: boolean;
+  ppp_username: string | null;
+  tunnel_ip: string | null;
+  nat_port: number | null;
+  status: string;
+  last_seen: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RouterCreate {
+  name: string;
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  password?: string | null;
+  plaintext_login?: boolean;
+  location?: string | null;
+  description?: string | null;
+  is_active?: boolean;
+}
+
+export interface RouterUpdate {
+  name?: string | null;
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  password?: string | null;
+  plaintext_login?: boolean | null;
+  location?: string | null;
+  description?: string | null;
+  is_active?: boolean | null;
+}
+
+export interface RouterSecureSetupResponse {
+  router_id: string;
+  router_name: string;
+  host: string;
+  api_port: number;
+  api_username: string;
+  api_password: string;
+  allowed_source: string;
+  script: string;
+  warning: string;
+}
+
+export interface RouterStatusResponse {
+  connected: boolean;
+  router_id: string;
+  router_name: string;
+  system_resource: Record<string, any> | null;
+  interfaces: Record<string, any>[];
+  ip_addresses: Record<string, any>[];
+  dhcp_leases: Record<string, any>[];
+  error: string | null;
+}
+
+export interface RouterActiveUsersResponse {
+  connected: boolean;
+  router_id: string;
+  router_name: string;
+  count: number;
+  active_users: Record<string, any>[];
+  error: string | null;
+}
+
+export interface RouterFeaturesResponse {
+  connected: boolean;
+  router_id: string;
+  router_name: string;
+  features: Record<string, any>;
+  error: string | null;
+}
+
+export interface RouterVouchersResponse {
+  connected: boolean;
+  router_id: string;
+  router_name: string;
+  count: number;
+  vouchers: Record<string, any>[];
+  profiles: Record<string, any>[];
+  profiles_error: string | null;
+  error: string | null;
+}
+
+export interface RouterLogsResponse {
+  connected: boolean;
+  router_id: string;
+  router_name: string;
+  logs: Array<Record<string, unknown>>;
+  error: string | null;
+}
+
+export interface RouterRemoteAccessResponse {
+  router_id: string;
+  router_name: string;
+  enabled: boolean;
+  protocol: string;
+  service: string;
+  host: string;
+  port: number;
+  endpoint: string;
+  url: string;
+}
+
+export interface RouterPingRequest {
+  target?: string | null;
+  port?: number | null;
+  timeout_seconds?: number;
+}
+
+export interface RouterPingResponse {
+  reachable: boolean;
+  host: string;
+  port: number | null;
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export interface RouterRebootResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  message: string;
+  error: string | null;
+}
+
+export interface RouterTestConnectionRequest {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  plaintext_login?: boolean;
+}
+
+export interface RouterTestConnectionResponse {
+  reachable: boolean;
+  connected: boolean;
+  host: string;
+  port: number;
+  latency_ms: number | null;
+  system_identity: string | null;
+  error: string | null;
+}
+
+export interface RouterHardwareResponse {
+  router_id: string;
+  router_name: string;
+  identity: string | null;
+  ethernet_ports: Record<string, any>[];
+  has_wireless: boolean;
+  wireless_interfaces: Record<string, any>[];
+  port_count: number;
+  error: string | null;
+}
+
+export interface PppoeUser {
+  username: string;
+  password: string;
+  profile?: string;
+}
+
+export interface HotspotProvisionConfig {
+  wan_interface_index?: number;
+  mgmt_interface_index?: number | null;
+  bridge_ip?: string;
+  bridge_subnet?: number;
+  pool_start?: string;
+  pool_end?: string;
+  rate_limit?: string;
+  pppoe_profile_name?: string;
+  pppoe_service_name?: string;
+  pppoe_users?: PppoeUser[];
+  enable_pppoe_client?: boolean;
+  isp_username?: string | null;
+  isp_password?: string | null;
+  dns_servers?: string;
+}
+
+export interface HotspotCommandResult {
+  step: string;
+  path: string;
+  action: string;
+  params: Record<string, any>;
+  success: boolean;
+  error: string | null;
+}
+
+export interface HotspotProvisionResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  hardware: Record<string, any>;
+  commands_executed: number;
+  command_log: HotspotCommandResult[];
+  error: string | null;
+}
+
+// ── Captive Portal Interfaces ──────────────────────────────────
+export interface CaptivePortalResponse {
+  id: string | null;
+  router_id: string | null;
+  router_name: string;
+  title: string;
+  description: string;
+  phone_one: string | null;
+  phone_two: string | null;
+  logo_url: string | null;
+  portal_template: string;
+  last_pushed_at: string | null;
+}
+
+export interface CaptivePortalUpsert {
+  title: string;
+  description: string;
+  phone_one?: string | null;
+  phone_two?: string | null;
+  logo_url?: string | null;
+  portal_template?: string;
+}
+
+export interface CaptivePortalPushPayload {
+  ftp_username?: string | null;
+  ftp_password?: string | null;
+  ftp_port?: number | null;
+}
+
+export interface PushCaptiveResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  pushed_files: string[];
+  deployed_directory: string | null;
+  updated_profiles: string[];
+  error: string | null;
+  diagnostics: Record<string, string>;
+}
+
+// ── Packages Interfaces ────────────────────────────────────────
+export interface VoucherPackageResponse {
+  id: number;
+  package_id: number;
+  limit: string;
+  devices: string;
+  data: string;
+  profile: string;
+  total: string;
+  router_id: string;
+  priority: number;
+  speed_type: string;
+  rate_limit?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface RouterPackagesDataResponse {
+  voucher: VoucherPackageResponse[];
+}
+
+export interface RouterPackagesResponse {
+  success: boolean;
+  data: RouterPackagesDataResponse;
+}
+
+export interface RouterPackagePayload {
+  limit: string;
+  devices: string;
+  data: string;
+  profile: string;
+  total: string;
+  priority: number;
+  speed_type: string;
+  rate_limit?: string | null;
+}
+
+export interface RouterPackageMutationResponse {
+  success: boolean;
+  package: VoucherPackageResponse;
+  router_sync_error: string | null;
+}
+
+export interface RouterPackageSyncResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  imported: number;
+  packages: VoucherPackageResponse[];
+  error: string | null;
+}
+
+export interface VoucherBatchCreate {
+  package_id: number;
+  quantity: number;
+  amount?: number | null;
+  phone_number?: string | null;
+  prefix?: string;
+  code_length?: number;
+  code_format?: "alphanumeric-upper" | "numeric" | "alphanumeric-mixed";
+  payment_reference?: string | null;
+}
+
+export interface VoucherBatchItemResponse {
+  id: string;
+  router_name: string;
+  phone_number: string;
+  voucher_code: string;
+  package_id: number;
+  profile: string;
+  speed_type: string;
+  amount: number;
+  devices: string;
+  data: string;
+  status: string;
+  payment_reference: string | null;
+  created_at: string;
+}
+
+export interface VoucherBatchResponse {
+  success: boolean;
+  count: number;
+  vouchers: VoucherBatchItemResponse[];
+  router_sync_error: string | null;
+}
+
+export interface VoucherJobCreatedResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface VoucherJobResponse {
+  id: string;
+  router_id: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "COMPLETED_WITH_ERRORS" | "FAILED";
+  stage: string;
+  progress: number;
+  message: string;
+  events: Array<{ time: string; stage: string; message: string }>;
+  result: VoucherBatchResponse | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface VoucherListResponse {
+  success: boolean;
+  total: number;
+  vouchers: VoucherBatchItemResponse[];
+}
+
+export interface VoucherCustomerInsight {
+  phone_number: string;
+  purchases: number;
+  total_amount: number;
+  last_purchase_at: string;
+  segment: string;
+}
+
+export interface VoucherSupportSummaryResponse {
+  success: boolean;
+  total_vouchers: number;
+  total_amount: number;
+  active_vouchers: number;
+  top_customers: VoucherCustomerInsight[];
+  low_customers: VoucherCustomerInsight[];
+  rare_customers: VoucherCustomerInsight[];
+}
+
+export interface MessageContactResponse {
+  phone_number: string;
+  wifi_name: string;
+  voucher_code: string;
+  purchase_count: number;
+  last_purchase_at: string;
+}
+
+export interface MessageContactListResponse {
+  contacts: MessageContactResponse[];
+  total: number;
+}
+
+export interface BulkMessageRequest {
+  phone_numbers: string[];
+  message: string;
+  use_voucher_template: boolean;
+}
+
+export interface MessageSendResult {
+  phone_number: string;
+  success: boolean;
+  message: string;
+  provider_response?: unknown;
+}
+
+export interface BulkMessageResponse {
+  success: boolean;
+  sent: number;
+  failed: number;
+  results: MessageSendResult[];
+}
+
+export interface VoucherRouterSyncResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  imported: number;
+  updated: number;
+  synced: number;
+  failed: number;
+  errors: string[];
+}
+
+export interface VoucherDeleteResponse {
+  success: boolean;
+  deleted: number;
+  router_deleted: number;
+  errors: string[];
+}
+
+export interface PortalVoucherResponse {
+  id: string;
+  router_name: string;
+  phone_number: string;
+  voucher_code: string;
+  package_id: number;
+  profile: string;
+  speed_type: string;
+  amount: number;
+  devices: string;
+  data: string;
+  status: string;
+  payment_reference: string | null;
+  created_at: string;
+}
+
+export interface PortalPaymentResponse {
+  success: boolean;
+  voucher: PortalVoucherResponse;
+}
+
+type RequestOptions = RequestInit & {
+  auth?: boolean;
+  baseUrl?: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
+};
+
+function getStoredToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function saveAuth(auth: AuthResponse) {
+  localStorage.setItem(AUTH_TOKEN_KEY, auth.access_token);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(auth.user));
+  window.dispatchEvent(new CustomEvent("renult-auth-change", { detail: auth.user }));
+}
+
+function clearAuth() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+  window.dispatchEvent(new CustomEvent("renult-auth-change"));
+}
+
+function getStoredUser(): UserResponse | null {
+  const raw = localStorage.getItem(AUTH_USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as UserResponse;
+  } catch {
+    return null;
+  }
+}
+
+function buildUrl(path: string, query?: RequestOptions["query"], baseUrl = API_BASE_URL) {
+  const url = new URL(`${baseUrl}${path}`);
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  return url.toString();
+}
+
+async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { auth = true, baseUrl, query, headers, body, ...init } = options;
+  const token = getStoredToken();
+  const res = await fetch(buildUrl(path, query, baseUrl), {
+    ...init,
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
+    },
+    body,
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await res.json() : await res.text();
+
+  if (!res.ok) {
+    const detail = data?.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((item: any) => item.msg).filter(Boolean).join(", ")
+      : detail || data?.message || data || "Request failed";
+    if (res.status === 401) clearAuth();
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+const memoryStore = <T extends { id: string }>(key: string) => {
+  const read = (): T[] => JSON.parse(localStorage.getItem(key) || "[]");
+  const write = (items: T[]) => localStorage.setItem(key, JSON.stringify(items));
+  return {
+    list: async () => read(),
+    create: async (data: any) => {
+      const item = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...data } as T;
+      write([item, ...read()]);
+      return item;
+    },
+    update: async (id: string, data: any) => {
+      const items = read().map((item) => (item.id === id ? { ...item, ...data } : item));
+      write(items);
+      return items.find((item) => item.id === id);
+    },
+    delete: async (id: string) => {
+      write(read().filter((item) => item.id !== id));
+      return { message: "Deleted" };
+    },
+    filter: async (criteria: any) => read().filter((item) => Object.entries(criteria).every(([k, v]) => (item as any)[k] === v)),
+  };
+};
+
+const localForms = memoryStore<any>("renult:forms");
+const localDocuments = memoryStore<any>("renult:documents");
+
+// ── Wallet Interfaces ──────────────────────────────────────────
+export interface BranchWalletResponse {
+  id: string;
+  branch_id: string;
+  branch_name: string;
+  balance: number;
+  total_deposited: number;
+  total_withdrawn: number;
+  total_fees_paid: number;
+  is_frozen: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WalletTransactionResponse {
+  id: string;
+  wallet_id: string;
+  branch_id: string;
+  transaction_type: "deposit" | "withdrawal";
+  amount: number;
+  fee_amount: number;
+  net_amount: number;
+  reference: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface DepositRequest {
+  amount: number;
+  reference?: string | null;
+}
+
+export interface WithdrawalChallengeRequest {
+  amount: number;
+  recipient_phone: string;
+  recipient_name: string;
+  provider: string;
+}
+
+export interface WithdrawalChallengeResponse {
+  challenge_id: string;
+  expires_at: string;
+  email_hint: string;
+}
+
+export interface WithdrawalConfirmRequest {
+  challenge_id: string;
+  code: string;
+}
+
+export interface DepositWithdrawResponse {
+  transaction: WalletTransactionResponse;
+  wallet: BranchWalletResponse;
+}
+
+export interface WithdrawalConfirmResponse extends DepositWithdrawResponse {
+  receipt_email_sent: boolean;
+}
+
+export interface PhoneIdentityResponse {
+  identityname: string;
+  message: string;
+  success: boolean;
+}
+
+export interface PlatformSummaryResponse {
+  total_commission: number;
+  total_balance: number;
+  total_deposited: number;
+  total_withdrawn: number;
+  total_fees_collected: number;
+  total_wallets: number;
+  frozen_wallets: number;
+}
+
+export interface ClientWalletSummary {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  wallets: BranchWalletResponse[];
+}
+
+export const renultApi = {
+  identity: {
+    verifyPhone: (msisdn: string) =>
+      apiRequest<PhoneIdentityResponse>("/identity/msisdn", {
+        method: "POST",
+        auth: false,
+        headers: { Accept: "application/json" },
+        body: JSON.stringify({ msisdn }),
+        baseUrl: LUCOPAY_API_BASE_URL,
+      }),
+  },
+  baseUrl: API_BASE_URL,
+  auth: {
+    token: getStoredToken,
+    storedUser: getStoredUser,
+    save: saveAuth,
+    clear: clearAuth,
+    googleLoginUrl: (redirect_uri?: string) =>
+      apiRequest<{ authorization_url: string }>("/auth/google/login-url", { auth: false, query: { redirect_uri } }),
+    register: (payload: { email: string; password: string; full_name: string; phone_number: string }) =>
+      apiRequest<{ message: string }>("/auth/register", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    verifyEmail: (payload: { email: string; code: string }) =>
+      apiRequest<AuthResponse>("/auth/verify-email", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    resendCode: (payload: { email: string }) =>
+      apiRequest<{ message: string }>("/auth/resend-code", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    login: (payload: { email: string; password: string }) =>
+      apiRequest<AuthResponse>("/auth/login", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    google: (payload: { id_token?: string; code?: string; redirect_uri?: string; full_name?: string; phone_number?: string }) =>
+      apiRequest<AuthResponse>("/auth/google", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    googleCallback: (code: string) => apiRequest<AuthResponse>("/auth/google/callback", { auth: false, query: { code } }),
+    forgotPassword: (payload: { email: string }) =>
+      apiRequest<{ message: string }>("/auth/forgot-password", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    resetPassword: (payload: { email: string; code: string; new_password: string }) =>
+      apiRequest<AuthResponse>("/auth/reset-password", { method: "POST", auth: false, body: JSON.stringify(payload) }),
+    setPassword: (payload: { current_password?: string | null; new_password: string }) =>
+      apiRequest<{ message: string }>("/auth/set-password", { method: "POST", body: JSON.stringify(payload) }),
+    me: () => apiRequest<UserResponse>("/auth/me"),
+  },
+  branches: {
+    list: (query?: { limit?: number; offset?: number }) => apiRequest<BranchResponse[]>("/branches", { query }),
+    create: (payload: { name: string }) => apiRequest<BranchResponse>("/branches", { method: "POST", body: JSON.stringify(payload) }),
+    update: (id: string, payload: { name?: string; avatar_url?: string }) =>
+      apiRequest<BranchResponse>(`/branches/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    delete: (id: string) => apiRequest<{ message: string }>(`/branches/${id}`, { method: "DELETE" }),
+  },
+  staff: {
+    list: (branchId: string, query?: { limit?: number; offset?: number }) =>
+      apiRequest<StaffResponse[]>(`/branches/${branchId}/staff`, { query }),
+    create: (branchId: string, payload: { full_name: string; email: string; phone_number?: string | null; role?: string | null; permissions?: string[]; share_percentage?: number }) =>
+      apiRequest<StaffResponse>(`/branches/${branchId}/staff`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (id: string, payload: Partial<{ full_name: string; email: string; phone_number: string | null; role: string; permissions: string[]; share_percentage: number; is_active: boolean; avatar_url: string }>) =>
+      apiRequest<StaffResponse>(`/staff/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    delete: (id: string) => apiRequest<{ message: string }>(`/staff/${id}`, { method: "DELETE" }),
+    revenueShare: (branchId: string) =>
+      apiRequest<RevenueShareResponse>(`/branches/${branchId}/revenue-share`),
+  },
+  notifications: {
+    list: (query?: { category?: string; unread_only?: boolean; limit?: number; offset?: number }) =>
+      apiRequest<NotificationListResponse>("/notifications", { query }),
+    markRead: (notification_ids: string[]) =>
+      apiRequest<{ message: string }>("/notifications/mark-read", { method: "POST", body: JSON.stringify({ notification_ids }) }),
+    markAllRead: () => apiRequest<{ message: string }>("/notifications/mark-all-read", { method: "POST" }),
+    unreadCount: () => apiRequest<{ unread_count?: number; count?: number }>("/notifications/unread-count"),
+    delete: (id: string) => apiRequest<{ message: string }>(`/notifications/${id}`, { method: "DELETE" }),
+  },
+  tickets: {
+    categories: () => apiRequest<TicketCategoryResponse[]>("/tickets/categories"),
+    list: (branchId: string, query?: { status_filter?: string; priority_filter?: string; limit?: number; offset?: number }) =>
+      apiRequest<TicketResponse[]>(`/branches/${branchId}/tickets`, { query }),
+    create: (branchId: string, payload: { category_id: string; title: string; description: string; priority?: string | null }) =>
+      apiRequest<TicketResponse>(`/branches/${branchId}/tickets`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (id: string, payload: Partial<{ category_id: string; title: string; description: string; priority: string; status: string; assigned_staff_id: string | null }>) =>
+      apiRequest<TicketResponse>(`/tickets/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    delete: (id: string) => apiRequest<{ message: string }>(`/tickets/${id}`, { method: "DELETE" }),
+  },
+  routers: {
+    list: (branchId: string, query?: { limit?: number; offset?: number }) =>
+      apiRequest<RouterResponse[]>(`/branches/${branchId}/routers`, { query }),
+    get: (routerId: string) =>
+      apiRequest<RouterResponse>(`/routers/${routerId}`),
+    create: (branchId: string, payload: RouterCreate) =>
+      apiRequest<RouterResponse>(`/branches/${branchId}/routers`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (routerId: string, payload: RouterUpdate) =>
+      apiRequest<RouterResponse>(`/routers/${routerId}`, { method: "PUT", body: JSON.stringify(payload) }),
+    delete: (routerId: string) =>
+      apiRequest<{ message: string }>(`/routers/${routerId}`, { method: "DELETE" }),
+    status: (routerId: string) =>
+      apiRequest<RouterStatusResponse>(`/routers/${routerId}/status`),
+    features: (routerId: string) =>
+      apiRequest<RouterFeaturesResponse>(`/routers/${routerId}/features`),
+    activeUsers: (routerId: string) =>
+      apiRequest<RouterActiveUsersResponse>(`/routers/${routerId}/active-users`),
+    vouchers: (routerId: string) =>
+      apiRequest<RouterVouchersResponse>(`/routers/${routerId}/vouchers`),
+    logs: (routerId: string, limit = 200) =>
+      apiRequest<RouterLogsResponse>(`/routers/${routerId}/logs`, { query: { limit } }),
+    remoteAccess: (routerId: string) =>
+      apiRequest<RouterRemoteAccessResponse>(`/routers/${routerId}/remote-access`),
+    secureSetup: (routerId: string) =>
+      apiRequest<RouterSecureSetupResponse>(`/routers/${routerId}/secure-setup`, {
+        query: { api_base_url: API_BASE_URL },
+      }),
+    ping: (routerId: string, payload: RouterPingRequest) =>
+      apiRequest<RouterPingResponse>(`/routers/${routerId}/ping`, { method: "POST", body: JSON.stringify(payload) }),
+    reboot: (routerId: string) =>
+      apiRequest<RouterRebootResponse>(`/routers/${routerId}/reboot`, { method: "POST" }),
+    testConnection: (payload: RouterTestConnectionRequest) =>
+      apiRequest<RouterTestConnectionResponse>("/routers/test-connection", { method: "POST", body: JSON.stringify(payload) }),
+    hardware: (routerId: string) =>
+      apiRequest<RouterHardwareResponse>(`/routers/${routerId}/hardware`),
+    provisionHotspot: (routerId: string, payload: HotspotProvisionConfig) =>
+      apiRequest<HotspotProvisionResponse>(`/routers/${routerId}/provision-hotspot`, { method: "POST", body: JSON.stringify(payload) }),
+  },
+  captivePortal: {
+    get: (routerId: string) =>
+      apiRequest<CaptivePortalResponse>(`/routers/${routerId}/captive`),
+    upsert: (routerId: string, payload: CaptivePortalUpsert) =>
+      apiRequest<CaptivePortalResponse>(`/routers/${routerId}/captive`, { method: "PUT", body: JSON.stringify(payload) }),
+    push: (routerId: string, payload?: CaptivePortalPushPayload) =>
+      apiRequest<PushCaptiveResponse>(`/routers/${routerId}/captive/push`, {
+        method: "POST",
+        body: JSON.stringify(payload || {}),
+      }),
+    publicConfig: (routerName: string) =>
+      apiRequest<CaptivePortalResponse>(`/portal/${routerName}`, { auth: false }),
+    publicPackages: (routerName: string) =>
+      apiRequest<any>(`/portal/${routerName}/packages`, { auth: false }),
+    publicExists: (routerName: string) =>
+      apiRequest<any>(`/portal/router/${routerName}/exists`, { auth: false }),
+    createVoucher: (routerName: string, payload: { phone_number: string; package_id: number; payment_reference?: string | null; buy_for?: string }) =>
+      apiRequest<PortalPaymentResponse>(`/portal/${routerName}/payments`, { method: "POST", auth: false, body: JSON.stringify(payload) }),
+  },
+  packages: {
+    list: (routerId: string) =>
+      apiRequest<RouterPackagesResponse>("/packages", { query: { router_id: routerId } }),
+    listForRouter: (routerId: string) =>
+      apiRequest<RouterPackagesResponse>(`/routers/${routerId}/packages`),
+    create: (routerId: string, payload: RouterPackagePayload) =>
+      apiRequest<RouterPackageMutationResponse>(`/routers/${routerId}/packages`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (routerId: string, packageRowId: number, payload: Partial<RouterPackagePayload>) =>
+      apiRequest<RouterPackageMutationResponse>(`/routers/${routerId}/packages/${packageRowId}`, { method: "PUT", body: JSON.stringify(payload) }),
+    delete: (routerId: string, packageRowId: number) =>
+      apiRequest<{ message: string }>(`/routers/${routerId}/packages/${packageRowId}`, { method: "DELETE" }),
+    sync: (routerId: string) =>
+      apiRequest<RouterPackageSyncResponse>(`/routers/${routerId}/packages/sync`, { method: "POST" }),
+    createVouchers: (routerId: string, payload: VoucherBatchCreate) =>
+      apiRequest<VoucherBatchResponse>(`/routers/${routerId}/vouchers`, { method: "POST", body: JSON.stringify(payload) }),
+    queueVouchers: (routerId: string, payload: VoucherBatchCreate) =>
+      apiRequest<VoucherJobCreatedResponse>(`/routers/${routerId}/voucher-jobs`, { method: "POST", body: JSON.stringify(payload) }),
+    voucherJob: (jobId: string) =>
+      apiRequest<VoucherJobResponse>(`/voucher-jobs/${jobId}`),
+    fetchVouchers: (routerId: string) =>
+      apiRequest<VoucherRouterSyncResponse>(`/routers/${routerId}/vouchers/fetch`, { method: "POST" }),
+    syncVouchers: (routerId: string) =>
+      apiRequest<VoucherRouterSyncResponse>(`/routers/${routerId}/vouchers/sync`, { method: "POST" }),
+    deleteVoucher: (routerId: string, voucherCode: string) =>
+      apiRequest<VoucherDeleteResponse>(`/routers/${routerId}/vouchers/${encodeURIComponent(voucherCode)}`, { method: "DELETE" }),
+    deleteVoucherBatch: (routerId: string, batchId: string) =>
+      apiRequest<VoucherDeleteResponse>(`/routers/${routerId}/voucher-batches/${encodeURIComponent(batchId)}`, { method: "DELETE" }),
+    branchVouchers: (branchId: string, query?: { limit?: number; offset?: number; search?: string; status_filter?: string }) =>
+      apiRequest<VoucherListResponse>(`/branches/${branchId}/vouchers`, { query }),
+    supportSummary: (branchId: string) =>
+      apiRequest<VoucherSupportSummaryResponse>(`/branches/${branchId}/voucher-support-summary`),
+  },
+  messages: {
+    contacts: (branchId: string, query?: { search?: string; limit?: number }) =>
+      apiRequest<MessageContactListResponse>(`/branches/${branchId}/message-contacts`, { query }),
+    send: (branchId: string, payload: BulkMessageRequest) =>
+      apiRequest<BulkMessageResponse>(`/branches/${branchId}/messages/send`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  },
+  wallets: {
+    myWallets: () =>
+      apiRequest<BranchWalletResponse[]>("/wallets/my-wallets"),
+    getBranchWallet: (branchId: string) =>
+      apiRequest<BranchWalletResponse>(`/wallets/branch/${branchId}`),
+    branchTransactions: (branchId: string, query?: { limit?: number; offset?: number }) =>
+      apiRequest<WalletTransactionResponse[]>(`/wallets/branch/${branchId}/transactions`, { query }),
+    deposit: (branchId: string, payload: DepositRequest) =>
+      apiRequest<DepositWithdrawResponse>(`/wallets/branch/${branchId}/deposit`, { method: "POST", body: JSON.stringify(payload) }),
+    requestWithdrawal: (branchId: string, payload: WithdrawalChallengeRequest) =>
+      apiRequest<WithdrawalChallengeResponse>(`/wallets/branch/${branchId}/withdrawal-challenges`, { method: "POST", body: JSON.stringify(payload) }),
+    confirmWithdrawal: (branchId: string, payload: WithdrawalConfirmRequest) =>
+      apiRequest<WithdrawalConfirmResponse>(`/wallets/branch/${branchId}/withdrawal-confirmations`, { method: "POST", body: JSON.stringify(payload) }),
+    platformSummary: () =>
+      apiRequest<PlatformSummaryResponse>("/wallets/platform/summary"),
+    platformClients: () =>
+      apiRequest<ClientWalletSummary[]>("/wallets/platform/clients"),
+    platformClientDetail: (userId: string) =>
+      apiRequest<ClientWalletSummary>(`/wallets/platform/clients/${userId}`),
+    freezeWallet: (walletId: string) =>
+      apiRequest<{ message: string }>(`/wallets/platform/freeze/${walletId}`, { method: "POST" }),
+    unfreezeWallet: (walletId: string) =>
+      apiRequest<{ message: string }>(`/wallets/platform/unfreeze/${walletId}`, { method: "POST" }),
+  },
+};
+
+export const base44 = {
+  auth: {
+    me: renultApi.auth.me,
+    logout: async () => clearAuth(),
+  },
+  entities: {
+    Form: localForms,
+    Document: localDocuments,
+  },
+  integrations: {
+    Core: {
+      UploadFile: async ({ file }: { file: File }) => ({ file_url: URL.createObjectURL(file) }),
+      InvokeLLM: async () => ({ response: "AI is not configured for this API yet." }),
+    },
+    Connections: { status: async () => ({}) },
+    Google: {
+      status: async () => ({}),
+      getAuthUrl: async () => ({ auth_url: "#" }),
+      disconnect: async () => ({ message: "Disconnected" }),
+      pushToDrive: async () => ({ url: "#" }),
+    },
+    Twitter: {
+      getAuthUrl: async () => ({ auth_url: "#", code_verifier: "", redirect_uri: "" }),
+      disconnect: async () => ({ message: "Disconnected" }),
+    },
+    Sheets: { push: async () => ({ url: "#" }) },
+    Drive: { smartUpload: async (file: File) => ({ file_url: URL.createObjectURL(file) }) },
+  },
+};
