@@ -192,9 +192,9 @@ def build_secure_setup_script(
     /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=tcp dst-port=8728 action=accept comment="Tresa: allow tunnel traffic"
     /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=udp dst-port=161 action=accept comment="Tresa: allow SNMP monitoring"
     :local allowRule [/ip firewall filter find where comment="Tresa: allow tunnel traffic"]
-    :if ([:len $allowRule] > 0) do={{ /ip firewall filter move $allowRule 0 }}
+    :if ([:len $allowRule] > 0) do={{ :do {{ /ip firewall filter move $allowRule 0 }} on-error={{}} }}
     :local snmpAllowRule [/ip firewall filter find where comment="Tresa: allow SNMP monitoring"]
-    :if ([:len $snmpAllowRule] > 0) do={{ /ip firewall filter move $snmpAllowRule 0 }}
+    :if ([:len $snmpAllowRule] > 0) do={{ :do {{ /ip firewall filter move $snmpAllowRule 0 }} on-error={{}} }}
     /snmp set enabled=yes
     :local snmpCommunityId [/snmp community find where name=$snmpCommunity]
     :if ([:len $snmpCommunityId] = 0) do={{

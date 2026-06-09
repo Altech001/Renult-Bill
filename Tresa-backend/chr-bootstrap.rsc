@@ -13,7 +13,7 @@
 
 :put "========================================================"
 :put " TRESA BILL CHR CONCENTRATOR BOOTSTRAP v6"
-:put " Running on: " . $chrPublicIp
+:put (" Running on: " . $chrPublicIp)
 :put "========================================================"
 
 # ============================================================
@@ -41,7 +41,7 @@
 # ============================================================
 :put "Step 1: Setting CHR identity..."
 /system identity set name=$chrIdentity
-:put "Step 1: Done — " . $chrIdentity
+:put ("Step 1: Done — " . $chrIdentity)
 
 # ============================================================
 # STEP 2 — API USER GROUP AND USER
@@ -123,15 +123,17 @@
 /ip firewall filter add chain=forward action=accept protocol=tcp dst-port=8728 connection-nat-state=dstnat comment="Tresa CHR: allow router API dstnat"
 
 # Move Tresa rules ahead of any pre-existing blanket drop — reverse desired order.
-/ip firewall filter move [find where comment="Tresa CHR: allow router API dstnat"]  0
-/ip firewall filter move [find where comment="Tresa CHR: established forward"]       0
-/ip firewall filter move [find where comment="Tresa CHR: drop API blacklist"]        0
-/ip firewall filter move [find where comment="Tresa CHR: API brute force"]           0
-/ip firewall filter move [find where comment="Tresa CHR: allow API"]                 0
-/ip firewall filter move [find where comment="Tresa CHR: allow ESP"]                 0
-/ip firewall filter move [find where comment="Tresa CHR: allow L2TP IPsec"]          0
-/ip firewall filter move [find where comment="Tresa CHR: allow IKE NAT-T"]           0
-/ip firewall filter move [find where comment="Tresa CHR: established input"]         0
+# Wrapped in on-error: RouterOS rejects "move X 0" with "can not move object
+# before itself" once X is already first, which is harmless on rerun.
+:do { /ip firewall filter move [find where comment="Tresa CHR: allow router API dstnat"]  0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: established forward"]       0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: drop API blacklist"]        0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: API brute force"]           0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: allow API"]                 0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: allow ESP"]                 0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: allow L2TP IPsec"]          0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: allow IKE NAT-T"]           0 } on-error={}
+:do { /ip firewall filter move [find where comment="Tresa CHR: established input"]         0 } on-error={}
 
 :put "Step 7: Done."
 
@@ -151,7 +153,7 @@
 :if ($backendOk = true) do={
     :put "Step 8: Backend reachable — OK."
 } else={
-    :put "Step 8: WARNING — Could not reach " . $backendHost . ". Check CHR internet and DNS."
+    :put ("Step 8: WARNING — Could not reach " . $backendHost . ". Check CHR internet and DNS.")
     :put "         The CHR is configured correctly. Verify manually if needed."
 }
 
@@ -224,11 +226,11 @@
 
 :put "========================================================"
 :put " TRESA BILL CHR CONCENTRATOR — READY"
-:put " Public IP         : " . $chrPublicIp
-:put " Backend URL       : https://" . $backendHost
+:put (" Public IP         : " . $chrPublicIp)
+:put (" Backend URL       : https://" . $backendHost)
 :local reachableStr "no (check internet/DNS)"
 :if ($backendOk = true) do={ :set reachableStr "yes" }
-:put " Backend reachable : " . $reachableStr
+:put (" Backend reachable : " . $reachableStr)
 :put " API port (CHR)    : 51847"
 :put " Tunnel subnet     : 10.0.0.0/16"
 :put " L2TP security     : IPsec + MSCHAPv2"
