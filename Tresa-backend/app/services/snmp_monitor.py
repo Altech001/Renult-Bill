@@ -255,8 +255,17 @@ def poll_router(
     previous = router.snmp_status
     checked_at = datetime.utcnow()
     try:
-        snmp_port = router.nat_port if router.tunnel_ip and router.nat_port else settings.snmp_port
-        uptime = poll_snmp_uptime(router.host, snmp_port)
+        # Prefer polling the tunnel IP directly (CHR → physical router via PPP interface),
+        # so the source is 10.0.0.1 (chr_tunnel_local_address) and matches the community
+        # restriction. Falling back to chr_host:nat_port relies on DNAT which does not
+        # fire for locally-originated traffic on RouterOS.
+        if router.tunnel_ip:
+            snmp_host = str(router.tunnel_ip)
+            snmp_port = settings.snmp_port
+        else:
+            snmp_host = router.host
+            snmp_port = router.nat_port if router.nat_port else settings.snmp_port
+        uptime = poll_snmp_uptime(snmp_host, snmp_port)
         router.snmp_status = "online"
         router.snmp_configured = True
         router.snmp_uptime_seconds = uptime
@@ -302,7 +311,10 @@ class SnmpMonitorWorker:
             try:
                 with Session(engine) as session:
                     router_ids = session.exec(
-                        select(Router.id).where(Router.is_active.is_(True))
+                        select(Router.id).where(
+                            Router.is_active.is_(True),
+                            Router.snmp_configured.is_(True),
+                        )
                     ).all()
                 for router_id in router_ids:
                     if self._stop.is_set():

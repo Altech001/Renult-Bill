@@ -109,17 +109,18 @@ def snmp_status_summary(
     if branch_id:
         statement = statement.where(Router.branch_id == branch_id)
     routers = session.exec(statement).all()
-    online = sum(item.snmp_status == "online" for item in routers)
-    offline = sum(item.snmp_status == "offline" for item in routers)
-    unknown = len(routers) - online - offline
-    checked_values = [item.snmp_checked_at for item in routers if item.snmp_checked_at]
+    configured = [item for item in routers if item.snmp_configured]
+    online = sum(item.snmp_status == "online" for item in configured)
+    offline = sum(item.snmp_status == "offline" for item in configured)
+    unknown = len(configured) - online - offline
+    checked_values = [item.snmp_checked_at for item in configured if item.snmp_checked_at]
     overall = "offline" if offline else "online" if online and not unknown else "unknown"
     return RouterMonitorSummary(
         status=overall,
         online=online,
         offline=offline,
         unknown=unknown,
-        total=len(routers),
+        total=len(configured),
         last_checked_at=max(checked_values) if checked_values else None,
         routers=[
             RouterMonitorItem(
@@ -131,7 +132,7 @@ def snmp_status_summary(
                 uptime_seconds=item.snmp_uptime_seconds,
                 error=item.snmp_error,
             )
-            for item in routers
+            for item in configured
         ],
     )
 
