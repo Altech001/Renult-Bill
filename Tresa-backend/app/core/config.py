@@ -33,10 +33,23 @@ class Settings:
     africastalking_api_key: str | None = os.getenv("AFRICASTALKING_API_KEY")
     africastalking_sender_id: str | None = os.getenv("AFRICASTALKING_SENDER_ID") or None
     africastalking_enqueue: bool = os.getenv("AFRICASTALKING_ENQUEUE", "true").lower() == "true"
+    sms_notification_cost: int = int(os.getenv("SMS_NOTIFICATION_COST", "29"))
+    r2_account_id: str | None = os.getenv("R2_ACCOUNT_ID")
+    r2_access_key_id: str | None = os.getenv("R2_ACCESS_KEY_ID")
+    r2_secret_access_key: str | None = os.getenv("R2_SECRET_ACCESS_KEY")
+    r2_bucket_name: str | None = os.getenv("R2_BUCKET_NAME")
+    r2_endpoint_url: str | None = os.getenv("R2_ENDPOINT_URL")
+    r2_public_base_url: str | None = os.getenv("R2_PUBLIC_BASE_URL")
+    upload_max_bytes: int = int(os.getenv("UPLOAD_MAX_BYTES", str(20 * 1024 * 1024)))
+    snmp_monitor_enabled: bool = os.getenv("SNMP_MONITOR_ENABLED", "true").lower() == "true"
+    snmp_community: str = os.getenv("SNMP_COMMUNITY", "public")
+    snmp_port: int = int(os.getenv("SNMP_PORT", "161"))
+    snmp_poll_interval_seconds: int = int(os.getenv("SNMP_POLL_INTERVAL_SECONDS", "60"))
+    snmp_timeout_seconds: float = float(os.getenv("SNMP_TIMEOUT_SECONDS", "3"))
     credential_encryption_key: str | None = os.getenv("CREDENTIAL_ENCRYPTION_KEY")
     router_registration_secret: str = os.getenv("ROUTER_REGISTRATION_SECRET", jwt_secret)
     chr_host: str = os.getenv("CHR_HOST", "23.92.30.38")
-    chr_api_port: int = int(os.getenv("CHR_API_PORT", "51847"))
+    chr_api_port: int = int(os.getenv("CHR_API_PORT", ""))
     chr_api_username: str = os.getenv("CHR_API_USERNAME", "tresachr")
     chr_api_password: str = os.getenv("CHR_API_PASSWORD", "")
     chr_plaintext_login: bool = os.getenv("CHR_PLAINTEXT_LOGIN", "true").lower() == "true"

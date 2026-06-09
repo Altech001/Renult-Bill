@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from app.models.router import Router
+from app.core.config import settings
 from app.services.routers.credentials import decrypt_secret
 
 try:
@@ -55,6 +56,45 @@ def _safe_resource_list(api: Any, path: str) -> dict[str, Any]:
         return {"items": _resource_list(api, path), "error": None}
     except Exception as exc:
         return {"items": [], "error": str(exc)}
+
+
+def enable_snmp(router: Router) -> None:
+    """Enable restricted SNMP v2c monitoring and its tunnel firewall rule."""
+    with router_connection(router) as api:
+        snmp = api.get_resource("/snmp")
+        snmp.set(enabled="yes")
+
+        communities = api.get_resource("/snmp/community")
+        matches = communities.get(name=settings.snmp_community)
+        allowed_address = settings.chr_tunnel_local_address
+        if "/" not in allowed_address:
+            allowed_address = f"{allowed_address}/32"
+        community_params = {
+            "name": settings.snmp_community,
+            "addresses": allowed_address,
+            "read-access": "yes",
+            "write-access": "no",
+        }
+        if matches and matches[0].get(".id"):
+            communities.set(id=matches[0][".id"], **community_params)
+        else:
+            communities.add(**community_params)
+
+        filters = api.get_resource("/ip/firewall/filter")
+        comment = "Tresa: allow SNMP monitoring"
+        rules = filters.get(comment=comment)
+        rule_params = {
+            "chain": "input",
+            "in-interface": "tresa-tunnel",
+            "protocol": "udp",
+            "dst-port": str(settings.snmp_port),
+            "action": "accept",
+            "comment": comment,
+        }
+        if rules and rules[0].get(".id"):
+            filters.set(id=rules[0][".id"], **rule_params)
+        else:
+            filters.add(**rule_params)
 
 
 def get_router_status(router: Router) -> dict[str, Any]:

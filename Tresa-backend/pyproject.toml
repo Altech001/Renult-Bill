@@ -17,4 +17,5 @@ dependencies = [
     "sqlmodel>=0.0.38",
     "python-dotenv>=1.2.2",
     "africastalking>=2.0.2",
+    "boto3>=1.40.0",
 ]

@@ -78,6 +78,52 @@ export interface NotificationListResponse {
   total: number;
 }
 
+export interface NotificationPreferenceResponse {
+  email_router_alerts: boolean;
+  sms_router_alerts: boolean;
+  sms_phone_number: string | null;
+  sms_cost_ugx: number;
+}
+
+export interface RouterMonitorItem {
+  router_id: string;
+  router_name: string;
+  status: "online" | "offline" | "unknown";
+  configured: boolean;
+  checked_at: string | null;
+  uptime_seconds: number | null;
+  error: string | null;
+}
+
+export interface RouterMonitorSummary {
+  status: "online" | "offline" | "unknown";
+  online: number;
+  offline: number;
+  unknown: number;
+  total: number;
+  last_checked_at: string | null;
+  routers: RouterMonitorItem[];
+}
+
+export interface SnmpEnableResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  physical_router_enabled: boolean;
+  chr_forwarding_enabled: boolean;
+  verified: boolean;
+  uptime_seconds: number | null;
+  message: string;
+}
+
+export interface UploadResponse {
+  key: string;
+  filename: string;
+  content_type: string | null;
+  size: number;
+  url: string;
+}
+
 export interface TicketCategoryResponse {
   id: string;
   name: string;
@@ -593,10 +639,11 @@ function buildUrl(path: string, query?: RequestOptions["query"], baseUrl = API_B
 async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { auth = true, baseUrl, query, headers, body, ...init } = options;
   const token = getStoredToken();
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const res = await fetch(buildUrl(path, query, baseUrl), {
     ...init,
     headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(body && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
@@ -791,6 +838,29 @@ export const renultApi = {
     unreadCount: () => apiRequest<{ unread_count?: number; count?: number }>("/notifications/unread-count"),
     delete: (id: string) => apiRequest<{ message: string }>(`/notifications/${id}`, { method: "DELETE" }),
   },
+  monitoring: {
+    summary: (branchId?: string | null) =>
+      apiRequest<RouterMonitorSummary>("/snmp/status-summary", { query: { branch_id: branchId } }),
+    enableSnmp: (routerId: string) =>
+      apiRequest<SnmpEnableResponse>(`/routers/${routerId}/snmp/enable`, {
+        method: "POST",
+      }),
+    preferences: () =>
+      apiRequest<NotificationPreferenceResponse>("/notification-preferences"),
+    updatePreferences: (payload: Omit<NotificationPreferenceResponse, "sms_cost_ugx">) =>
+      apiRequest<NotificationPreferenceResponse>("/notification-preferences", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+  },
+  uploads: {
+    upload: async (file: File, folder = "general") => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("folder", folder);
+      return apiRequest<UploadResponse>("/uploads", { method: "POST", body: form });
+    },
+  },
   tickets: {
     categories: () => apiRequest<TicketCategoryResponse[]>("/tickets/categories"),
     list: (branchId: string, query?: { status_filter?: string; priority_filter?: string; limit?: number; offset?: number }) =>
@@ -936,7 +1006,10 @@ export const base44 = {
   },
   integrations: {
     Core: {
-      UploadFile: async ({ file }: { file: File }) => ({ file_url: URL.createObjectURL(file) }),
+      UploadFile: async ({ file }: { file: File }) => {
+        const uploaded = await renultApi.uploads.upload(file);
+        return { file_url: uploaded.url, key: uploaded.key };
+      },
       InvokeLLM: async () => ({ response: "AI is not configured for this API yet." }),
     },
     Connections: { status: async () => ({}) },

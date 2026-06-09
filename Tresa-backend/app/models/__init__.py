@@ -1,5 +1,6 @@
 from app.models.email_verification import EmailVerification
 from app.models.notification import Notification
+from app.models.notification_preference import NotificationPreference
 from app.models.user import User
 from app.models.branch import Branch
 from app.models.captive_portal import CaptivePortal
@@ -19,6 +20,7 @@ from app.models.platform_ledger import PlatformLedgerEntry
 __all__ = [
     "EmailVerification",
     "Notification",
+    "NotificationPreference",
     "User",
     "Branch",
     "CaptivePortal",

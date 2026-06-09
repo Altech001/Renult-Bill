@@ -73,6 +73,7 @@ def build_secure_setup_script(router: Router, api_base_url: str) -> str:
     api_url = _routeros_quote(api_base_url)
     chr_host = _routeros_quote(settings.chr_host)
     ipsec_secret = _routeros_quote(settings.router_l2tp_ipsec_secret)
+    snmp_community = _routeros_quote(settings.snmp_community)
     token = _routeros_quote(token)
     if not ipsec_secret:
         raise RuntimeError("ROUTER_L2TP_IPSEC_SECRET is not configured")
@@ -84,6 +85,7 @@ def build_secure_setup_script(router: Router, api_base_url: str) -> str:
     :local chrHost "{chr_host}"
     :local ipsecSecret "{ipsec_secret}"
     :local registrationToken "{token}"
+    :local snmpCommunity "{snmp_community}"
 
     :global tresaJsonValue do={{
         :local marker ("\\\"" . $key . "\\\":")
@@ -130,11 +132,16 @@ def build_secure_setup_script(router: Router, api_base_url: str) -> str:
     :local apiPass [$tresaJsonValue payload=$registerData key="api_password"]
     :if (($pppUser = "") || ($pppPass = "") || ($apiPass = "")) do={{ :error "Incomplete registration response" }}
 
-    # 3. Create the fixed read-only billing account and save its credential.
-    :if ([:len [/user find where name="billingapi"]] = 0) do={{
-        /user add name="billingapi" password=$apiPass group=read disabled=no comment="Tresa Bill API User - DO NOT DELETE"
+    # 3. Create the restricted management account and save its credential.
+    :if ([:len [/user group find where name="tresa-monitor"]] = 0) do={{
+        /user group add name="tresa-monitor" policy=api,read,write,test comment="Tresa router monitoring"
     }} else={{
-        /user set [find where name="billingapi"] password=$apiPass group=read disabled=no comment="Tresa Bill API User - DO NOT DELETE"
+        /user group set [find where name="tresa-monitor"] policy=api,read,write,test
+    }}
+    :if ([:len [/user find where name="billingapi"]] = 0) do={{
+        /user add name="billingapi" password=$apiPass group=tresa-monitor disabled=no comment="Tresa Bill API User - DO NOT DELETE"
+    }} else={{
+        /user set [find where name="billingapi"] password=$apiPass group=tresa-monitor disabled=no comment="Tresa Bill API User - DO NOT DELETE"
     }}
     :local credentialBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"api_user\\\":\\\"billingapi\\\",\\\"api_pass\\\":\\\"" . $apiPass . "\\\"}}")
     :local credentialResult [/tool fetch url=($apiBase . "/api/routers/set-credentials") http-method=post http-data=$credentialBody http-header-field="Content-Type: application/json" output=user as-value]
@@ -160,8 +167,21 @@ def build_secure_setup_script(router: Router, api_base_url: str) -> str:
     /ip firewall filter add chain=input src-address-list=tresa_blacklist action=drop comment="Tresa: block blacklisted"
     /ip firewall filter add chain=input protocol=tcp dst-port=8728 connection-limit=5,32 action=add-src-to-address-list address-list=tresa_blacklist address-list-timeout=30d comment="Tresa: brute force protection"
     /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=tcp dst-port=8728 action=accept comment="Tresa: allow tunnel traffic"
+    /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=udp dst-port=161 action=accept comment="Tresa: allow SNMP monitoring"
     :local allowRule [/ip firewall filter find where comment="Tresa: allow tunnel traffic"]
     :if ([:len $allowRule] > 0) do={{ /ip firewall filter move $allowRule 0 }}
+    :local snmpAllowRule [/ip firewall filter find where comment="Tresa: allow SNMP monitoring"]
+    :if ([:len $snmpAllowRule] > 0) do={{ /ip firewall filter move $snmpAllowRule 0 }}
+    /snmp set enabled=yes
+    :local snmpCommunityId [/snmp community find where name=$snmpCommunity]
+    :if ([:len $snmpCommunityId] = 0) do={{
+        /snmp community add name=$snmpCommunity addresses=10.0.0.0/16 read-access=yes write-access=no
+    }} else={{
+        /snmp community set $snmpCommunityId addresses=10.0.0.0/16 read-access=yes write-access=no
+    }}
+    :if (($snmpCommunity != "public") && ([:len [/snmp community find where name="public"]] > 0)) do={{
+        /snmp community set [find where name="public"] addresses=127.0.0.1/32 write-access=no
+    }}
 
     # 6. Confirm provisioning and require real returned values.
     :local confirmBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"status\\\":\\\"ready\\\"}}")

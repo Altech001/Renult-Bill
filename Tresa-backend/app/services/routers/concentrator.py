@@ -8,7 +8,7 @@ import time
 import traceback as traceback_module
 from collections import defaultdict, deque
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Iterator
 from uuid import UUID
 
@@ -19,7 +19,6 @@ from app.db.session import engine
 from app.models.branch import Branch
 from app.models.router import Router
 from app.models.router_event import RouterAuditLog, RouterErrorLog
-from app.models.notification import Notification
 from app.services.notification import notify
 from app.services.routers.credentials import decrypt_secret, encrypt_secret
 from app.services.routers.events import router_event_hub
@@ -27,6 +26,7 @@ from app.services.routers.routeros import routeros_api
 
 
 NAT_COMMENT_PREFIX = "customer:"
+SNMP_NAT_COMMENT_PREFIX = "customer-snmp:"
 SAFE_COMMANDS = {
     ("/system/resource", "print"),
     ("/system/identity", "print"),
@@ -40,6 +40,8 @@ SAFE_COMMANDS = {
 }
 _rate_windows: dict[UUID, deque[float]] = defaultdict(deque)
 _rate_lock = threading.Lock()
+_last_chr_error_log_at = 0.0
+CHR_ERROR_LOG_INTERVAL_SECONDS = 15 * 60
 
 
 def registration_token(router_id: UUID, issued_at: int | None = None) -> str:
@@ -139,20 +141,6 @@ def _publish(session: Session, router: Router, payload: dict[str, Any]) -> None:
         router_event_hub.publish(user_id, payload)
 
 
-def _alert_admins(session: Session, title: str, body: str) -> None:
-    cutoff = datetime.utcnow() - timedelta(minutes=10)
-    user_ids = set(session.exec(select(Branch.user_id)).all())
-    for user_id in user_ids:
-        existing = session.exec(
-            select(Notification)
-            .where(Notification.user_id == user_id)
-            .where(Notification.title == title)
-            .where(Notification.created_at >= cutoff)
-        ).first()
-        if not existing:
-            notify(session, user_id, "router", title, body)
-
-
 def _allocate_nat_port(session: Session) -> int:
     used = set(session.exec(select(Router.nat_port).where(Router.nat_port.is_not(None))).all())
     used.update(session.exec(select(Router.port)).all())
@@ -198,6 +186,16 @@ def _find_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
     return next((rule for rule in rules if rule.get("comment") == comment), None)
 
 
+def _find_snmp_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
+    rules = _resource_items(api, "/ip/firewall/nat")
+    if router.snmp_nat_rule_id:
+        match = next((rule for rule in rules if rule.get(".id") == router.snmp_nat_rule_id), None)
+        if match:
+            return match
+    comment = f"{SNMP_NAT_COMMENT_PREFIX}{router.ppp_username}"
+    return next((rule for rule in rules if rule.get("comment") == comment), None)
+
+
 def _create_nat_rule(api: Any, router: Router) -> str:
     resource = api.get_resource("/ip/firewall/nat")
     result = resource.call("add", {
@@ -219,11 +217,36 @@ def _create_nat_rule(api: Any, router: Router) -> str:
     return str(rule_id)
 
 
+def _create_snmp_nat_rule(api: Any, router: Router) -> str:
+    resource = api.get_resource("/ip/firewall/nat")
+    result = resource.call("add", {
+        "chain": "dstnat",
+        "dst-address": settings.chr_host,
+        "dst-port": str(router.nat_port),
+        "protocol": "udp",
+        "action": "dst-nat",
+        "to-addresses": str(router.tunnel_ip),
+        "to-ports": str(settings.snmp_port),
+        "comment": f"{SNMP_NAT_COMMENT_PREFIX}{router.ppp_username}",
+    })
+    rule_id = result.get(".id") if isinstance(result, dict) else None
+    if not rule_id:
+        created = _find_snmp_nat_rule(api, router)
+        rule_id = created.get(".id") if created else None
+    if not rule_id:
+        raise RuntimeError("CHR created the SNMP NAT rule but did not return its .id")
+    return str(rule_id)
+
+
 def _remove_nat_rule(api: Any, router: Router) -> None:
     rule = _find_nat_rule(api, router)
     if rule and rule.get(".id"):
         api.get_resource("/ip/firewall/nat").remove(id=rule[".id"])
+    snmp_rule = _find_snmp_nat_rule(api, router)
+    if snmp_rule and snmp_rule.get(".id"):
+        api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
     router.nat_rule_id = None
+    router.snmp_nat_rule_id = None
 
 
 def _ensure_nat_rule(api: Any, router: Router) -> None:
@@ -236,10 +259,48 @@ def _ensure_nat_rule(api: Any, router: Router) -> None:
     }
     if rule and all(str(rule.get(key, "")) == value for key, value in expected.items()):
         router.nat_rule_id = str(rule.get(".id"))
-        return
-    if rule and rule.get(".id"):
-        api.get_resource("/ip/firewall/nat").remove(id=rule[".id"])
-    router.nat_rule_id = _create_nat_rule(api, router)
+    else:
+        if rule and rule.get(".id"):
+            api.get_resource("/ip/firewall/nat").remove(id=rule[".id"])
+        router.nat_rule_id = _create_nat_rule(api, router)
+
+    snmp_rule = _find_snmp_nat_rule(api, router)
+    expected_snmp = {
+        "dst-address": settings.chr_host,
+        "dst-port": str(router.nat_port),
+        "to-addresses": str(router.tunnel_ip),
+        "to-ports": str(settings.snmp_port),
+    }
+    if snmp_rule and all(str(snmp_rule.get(key, "")) == value for key, value in expected_snmp.items()):
+        router.snmp_nat_rule_id = str(snmp_rule.get(".id"))
+    else:
+        if snmp_rule and snmp_rule.get(".id"):
+            api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
+        router.snmp_nat_rule_id = _create_snmp_nat_rule(api, router)
+
+
+def ensure_snmp_forwarding(session: Session, router: Router) -> Router:
+    if not router.ppp_username or not router.tunnel_ip or router.nat_port is None:
+        raise ValueError("Router tunnel provisioning must be completed before enabling SNMP")
+    with chr_connection() as api:
+        snmp_rule = _find_snmp_nat_rule(api, router)
+        expected = {
+            "dst-address": settings.chr_host,
+            "dst-port": str(router.nat_port),
+            "to-addresses": str(router.tunnel_ip),
+            "to-ports": str(settings.snmp_port),
+        }
+        if snmp_rule and all(str(snmp_rule.get(key, "")) == value for key, value in expected.items()):
+            router.snmp_nat_rule_id = str(snmp_rule.get(".id"))
+        else:
+            if snmp_rule and snmp_rule.get(".id"):
+                api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
+            router.snmp_nat_rule_id = _create_snmp_nat_rule(api, router)
+    router.updated_at = datetime.utcnow()
+    session.add(router)
+    session.commit()
+    session.refresh(router)
+    return router
 
 
 def register_router(
@@ -434,7 +495,8 @@ def _active_sessions(api: Any) -> dict[str, str]:
     return sessions
 
 
-def poll_tunnels() -> None:
+def poll_tunnels() -> bool:
+    global _last_chr_error_log_at
     with Session(engine) as session:
         try:
             with chr_connection() as api:
@@ -466,13 +528,13 @@ def poll_tunnels() -> None:
                         "event": "router_disconnected",
                         "customer": router.ppp_username,
                     })
+            return True
         except Exception as exc:
-            log_error(session, "poll_tunnels", exc)
-            _alert_admins(
-                session,
-                "CHR concentrator is unreachable",
-                f"The CHR API at {settings.chr_host}:{settings.chr_api_port} failed after three attempts. {exc}",
-            )
+            now = time.monotonic()
+            if now - _last_chr_error_log_at >= CHR_ERROR_LOG_INTERVAL_SECONDS:
+                log_error(session, "poll_tunnels", exc)
+                _last_chr_error_log_at = now
+            return False
 
 
 def health_check() -> None:
@@ -528,13 +590,15 @@ class ConcentratorWorker:
     def _run(self) -> None:
         next_poll = 0.0
         next_health = 0.0
+        chr_available = False
         while not self._stop.wait(1):
             now = time.monotonic()
             if now >= next_poll:
-                poll_tunnels()
+                chr_available = poll_tunnels()
                 next_poll = now + 30
             if now >= next_health:
-                health_check()
+                if chr_available:
+                    health_check()
                 next_health = now + 60
 
 

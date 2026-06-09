@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, health, notification, branch, messaging, package, portal, router, staff, ticket, wallet
+from app.api.routes import auth, health, monitoring, notification, branch, messaging, package, portal, router, staff, ticket, upload, wallet
 from app.db.init import init_db
 from app.services.routers.concentrator import concentrator_worker
+from app.services.snmp_monitor import snmp_monitor_worker
 
 
 def create_app() -> FastAPI:
@@ -26,14 +27,18 @@ def create_app() -> FastAPI:
     def on_startup() -> None:
         init_db()
         concentrator_worker.start()
+        snmp_monitor_worker.start()
 
     @app.on_event("shutdown")
     def on_shutdown() -> None:
         concentrator_worker.stop()
+        snmp_monitor_worker.stop()
 
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(notification.router)
+    app.include_router(monitoring.router)
+    app.include_router(upload.router)
     app.include_router(branch.router)
     app.include_router(messaging.router)
     app.include_router(package.router)

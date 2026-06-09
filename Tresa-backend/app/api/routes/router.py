@@ -327,7 +327,7 @@ def delete_router(
     session: SessionDep,
 ) -> MessageResponse:
     db_router = get_router_with_ownership(session, router_id, user.id)
-    if db_router.ppp_username or db_router.nat_rule_id:
+    if db_router.ppp_username or db_router.nat_rule_id or db_router.snmp_nat_rule_id:
         try:
             delete_router_from_chr(session, db_router)
         except Exception as exc:

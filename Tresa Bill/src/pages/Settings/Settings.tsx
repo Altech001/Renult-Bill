@@ -1,73 +1,15 @@
-import { NotificationResponse, renultApi } from "@/api/foreform";
+import { NotificationPreferenceResponse, NotificationResponse, renultApi } from "@/api/foreform";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { CheckCheck, Loader2, Mail, MessageSquareText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import SettingsLayout from "./SettingsLayout";
-
-interface NotificationCheckItem {
-  id: string;
-  label: string;
-  description: string;
-  defaultChecked: boolean;
-}
-
-interface NotificationRadioSection {
-  id: string;
-  title: string;
-  description: string;
-  options: { value: string; label: string; description: string }[];
-  defaultValue: string;
-}
-
-const PREFS_KEY = "renult:notification-preferences";
-
-const notificationFromUs: NotificationCheckItem[] = [
-  {
-    id: "account-updates",
-    label: "Account updates",
-    description: "Receive profile, password, and verification notices.",
-    defaultChecked: true,
-  },
-  {
-    id: "branch-alerts",
-    label: "Branch alerts",
-    description: "Receive alerts about branches, staff, tickets, and routers.",
-    defaultChecked: true,
-  },
-  {
-    id: "billing-campaigns",
-    label: "Billing and campaigns",
-    description: "Receive transaction, voucher, and campaign notifications.",
-    defaultChecked: true,
-  },
-];
-
-const notificationRadioSections: NotificationRadioSection[] = [
-  {
-    id: "reminders",
-    title: "Reminders",
-    description: "Choose how many reminder notifications should reach you.",
-    options: [
-      {
-        value: "important",
-        label: "Important reminders only",
-        description: "Only notify me if the reminder is tagged as important.",
-      },
-      {
-        value: "all",
-        label: "All reminders",
-        description: "Notify me for all reminders.",
-      },
-    ],
-    defaultValue: "all",
-  },
-];
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -84,26 +26,8 @@ export default function SettingsPage() {
   const [items, setItems] = useState<NotificationResponse[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [checks, setChecks] = useState<Record<string, boolean>>(() => {
-    const defaults = Object.fromEntries(notificationFromUs.map((item) => [item.id, item.defaultChecked]));
-    const saved = localStorage.getItem(PREFS_KEY);
-    if (!saved) return defaults;
-    try {
-      return { ...defaults, ...(JSON.parse(saved).checks || {}) };
-    } catch {
-      return defaults;
-    }
-  });
-  const [radios, setRadios] = useState<Record<string, string>>(() => {
-    const defaults = Object.fromEntries(notificationRadioSections.map((section) => [section.id, section.defaultValue]));
-    const saved = localStorage.getItem(PREFS_KEY);
-    if (!saved) return defaults;
-    try {
-      return { ...defaults, ...(JSON.parse(saved).radios || {}) };
-    } catch {
-      return defaults;
-    }
-  });
+  const [isSavingAlerts, setIsSavingAlerts] = useState(false);
+  const [alertPreferences, setAlertPreferences] = useState<NotificationPreferenceResponse | null>(null);
 
   const loadNotifications = async () => {
     setIsLoading(true);
@@ -118,10 +42,18 @@ export default function SettingsPage() {
     }
   };
 
-  useEffect(() => { loadNotifications(); }, []);
+  const loadAlertPreferences = async () => {
+    try {
+      setAlertPreferences(await renultApi.monitoring.preferences());
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, "Failed to load router alert settings"));
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ checks, radios }));
-  }, [checks, radios]);
+    loadNotifications();
+    loadAlertPreferences();
+  }, []);
 
   const markAllRead = async () => {
     try {
@@ -131,6 +63,24 @@ export default function SettingsPage() {
       toast.success("Notifications marked as read");
     } catch (error: unknown) {
       toast.error(errorMessage(error, "Failed to update notifications"));
+    }
+  };
+
+  const saveAlertPreferences = async () => {
+    if (!alertPreferences) return;
+    setIsSavingAlerts(true);
+    try {
+      const saved = await renultApi.monitoring.updatePreferences({
+        email_router_alerts: alertPreferences.email_router_alerts,
+        sms_router_alerts: alertPreferences.sms_router_alerts,
+        sms_phone_number: alertPreferences.sms_phone_number,
+      });
+      setAlertPreferences(saved);
+      toast.success("Router alert settings saved");
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, "Failed to save router alert settings"));
+    } finally {
+      setIsSavingAlerts(false);
     }
   };
 
@@ -152,7 +102,83 @@ export default function SettingsPage() {
         </div>
         <Separator className="mb-5 bg-border/20" />
 
-        <div className="grid grid-cols-1  gap-8s">
+        <div className="mb-8 border border-border/10 bg-card">
+          <div className="border-b border-border/30 px-5 py-4">
+            <h2 className="text-sm font-semibold">Router status alerts</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Get notified when SNMP monitoring detects a router going offline or coming back online.
+            </p>
+          </div>
+          {alertPreferences ? (
+            <div className="space-y-5 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div>
+                    <Label htmlFor="email-router-alerts" className="text-sm font-medium">Email alerts</Label>
+                    <p className="text-xs text-muted-foreground">Send status changes to your account email.</p>
+                  </div>
+                </div>
+                <Switch
+                  id="email-router-alerts"
+                  checked={alertPreferences.email_router_alerts}
+                  onCheckedChange={(checked) => setAlertPreferences((current) => current && ({
+                    ...current,
+                    email_router_alerts: checked,
+                  }))}
+                />
+              </div>
+
+              <Separator className="bg-border/30" />
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div>
+                    <Label htmlFor="sms-router-alerts" className="text-sm font-medium">SMS alerts</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {alertPreferences.sms_cost_ugx} UGX is deducted from the router branch wallet per accepted SMS.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="sms-router-alerts"
+                  checked={alertPreferences.sms_router_alerts}
+                  onCheckedChange={(checked) => setAlertPreferences((current) => current && ({
+                    ...current,
+                    sms_router_alerts: checked,
+                  }))}
+                />
+              </div>
+
+              <div className="grid gap-2 sm:max-w-sm">
+                <Label htmlFor="router-alert-phone" className="text-xs">SMS phone number</Label>
+                <Input
+                  id="router-alert-phone"
+                  type="tel"
+                  placeholder="+256 7XX XXX XXX"
+                  value={alertPreferences.sms_phone_number || ""}
+                  onChange={(event) => setAlertPreferences((current) => current && ({
+                    ...current,
+                    sms_phone_number: event.target.value,
+                  }))}
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={saveAlertPreferences} disabled={isSavingAlerts}>
+                  {isSavingAlerts && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save alert settings
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-28 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading alert settings...
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-8">
           <aside className="border border-border/10 rounded-none bg-card/50 overflow-hidden h-fit">
             <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
               <div className="flex items-center gap-2">

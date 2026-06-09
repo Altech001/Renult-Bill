@@ -5,6 +5,7 @@ from app.db.session import engine
 from app.models import (
     EmailVerification,
     Notification,
+    NotificationPreference,
     User,
     Branch,
     CaptivePortal,
@@ -30,6 +31,7 @@ def init_db() -> None:
     _ = (
         EmailVerification,
         Notification,
+        NotificationPreference,
         User,
         Branch,
         CaptivePortal,
@@ -55,6 +57,11 @@ def init_db() -> None:
 
     # Seed ticket categories
     with Session(engine) as session:
+        session.exec(
+            sa.delete(Notification).where(
+                Notification.title == "CHR concentrator is unreachable"
+            )
+        )
         default_categories = [
             ("Network Issues", "Tickets related to internet connection, latency, or routers."),
             ("Billing & Payment", "Issues regarding invoices, receipts, and subscriptions."),
@@ -103,9 +110,15 @@ def _ensure_router_columns() -> None:
         "tunnel_ip": "VARCHAR",
         "nat_port": "INTEGER",
         "nat_rule_id": "VARCHAR",
+        "snmp_nat_rule_id": "VARCHAR",
         "api_username": "VARCHAR",
         "api_password_encrypted": "VARCHAR",
         "status": "VARCHAR DEFAULT 'pending' NOT NULL",
+        "snmp_status": "VARCHAR DEFAULT 'unknown' NOT NULL",
+        "snmp_configured": "BOOLEAN DEFAULT FALSE NOT NULL",
+        "snmp_checked_at": "TIMESTAMP",
+        "snmp_uptime_seconds": "INTEGER",
+        "snmp_error": "TEXT",
         "connected_at": "TIMESTAMP",
         "disconnected_at": "TIMESTAMP",
         "last_seen": "TIMESTAMP",
