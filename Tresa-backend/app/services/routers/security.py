@@ -129,12 +129,18 @@ def build_secure_setup_script(
     }}
 
     # 1. Validate internet and identify ether1.
-    :if ([/ping 8.8.8.8 count=3] = 0) do={{ :error "No internet connection. Check your WAN." }}
+    :if ([/ping 8.8.8.8 count=3] = 0) do={{
+        :put "Step 1: ERROR - no reply from 8.8.8.8. Check the WAN cable, DHCP, or gateway configuration."
+        :error "No internet connection. Check your WAN."
+    }}
     :local wanId [/interface ethernet find where default-name="ether1"]
     :if ([:len $wanId] = 0) do={{
         :set wanId [/interface ethernet find where name="ether1"]
     }}
-    :if ([:len $wanId] = 0) do={{ :error "ether1 was not found" }}
+    :if ([:len $wanId] = 0) do={{
+        :put "Step 1: ERROR - no Ethernet interface named (or defaulting to) 'ether1' was found. Run /interface ethernet print, then contact support to customize the script for this hardware."
+        :error "ether1 was not found"
+    }}
     :local macAddress [/interface ethernet get $wanId mac-address]
     :local boardName [/system resource get board-name]
     :local osVersion [/system resource get version]
@@ -143,7 +149,10 @@ def build_secure_setup_script(
     # 2. Register with the configured backend.
     :local registerBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"model\\\":\\\"" . $boardName . "\\\",\\\"version\\\":\\\"" . $osVersion . "\\\",\\\"serial\\\":\\\"" . $serialNumber . "\\\"}}")
     :local registerResult [/tool fetch url=($apiBase . "/api/routers/register") http-method=post http-data=$registerBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($registerResult->"status") != "finished") do={{ :error "Backend registration request did not finish" }}
+    :if (($registerResult->"status") != "finished") do={{
+        :put ("Step 2: ERROR - registration request to " . $apiBase . "/api/routers/register did not finish (status=" . ($registerResult->"status") . "). Check internet/DNS to " . $apiBase . ".")
+        :error "Backend registration request did not finish"
+    }}
     :local registerData ($registerResult->"data")
     :local registerStatus [$tresaJsonValue payload=$registerData key="status"]
     :if (($registerStatus != "success") && ($registerStatus != "already_registered")) do={{
@@ -153,7 +162,10 @@ def build_secure_setup_script(
     :local pppUser [$tresaJsonValue payload=$registerData key="ppp_username"]
     :local pppPass [$tresaJsonValue payload=$registerData key="ppp_password"]
     :local apiPass [$tresaJsonValue payload=$registerData key="api_password"]
-    :if (($pppUser = "") || ($pppPass = "") || ($apiPass = "")) do={{ :error "Incomplete registration response" }}
+    :if (($pppUser = "") || ($pppPass = "") || ($apiPass = "")) do={{
+        :put ("Step 2: ERROR - incomplete registration response: " . $registerData)
+        :error "Incomplete registration response"
+    }}
 
     # 3. Create the restricted management account and save its credential.
     :if ([:len [/user group find where name="tresa-monitor"]] = 0) do={{
@@ -168,7 +180,10 @@ def build_secure_setup_script(
     }}
     :local credentialBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"api_user\\\":\\\"billingapi\\\",\\\"api_pass\\\":\\\"" . $apiPass . "\\\"}}")
     :local credentialResult [/tool fetch url=($apiBase . "/api/routers/set-credentials") http-method=post http-data=$credentialBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($credentialResult->"status") != "finished") do={{ :error "Credential callback did not finish" }}
+    :if (($credentialResult->"status") != "finished") do={{
+        :put ("Step 3: ERROR - credential callback did not finish (status=" . ($credentialResult->"status") . ").")
+        :error "Credential callback did not finish"
+    }}
 
     # 4. Recreate and verify the L2TP/IPsec tunnel.
     :foreach oldTunnel in=[/interface l2tp-client find where name="tresa-tunnel"] do={{
@@ -177,8 +192,14 @@ def build_secure_setup_script(
     /interface l2tp-client add name="tresa-tunnel" connect-to=$chrHost user=$pppUser password=$pppPass use-ipsec=yes ipsec-secret=$ipsecSecret disabled=no keepalive-timeout=30 add-default-route=no comment="Tresa Bill Tunnel - DO NOT DELETE"
     :delay 10s
     :local tunnelId [/interface l2tp-client find where name="tresa-tunnel"]
-    :if ([:len $tunnelId] = 0) do={{ :error "Tunnel interface was not created" }}
-    :if ([/interface l2tp-client get $tunnelId running] != true) do={{ :error "Tunnel failed to connect" }}
+    :if ([:len $tunnelId] = 0) do={{
+        :put "Step 4: ERROR - the tresa-tunnel L2TP-client interface was not created."
+        :error "Tunnel interface was not created"
+    }}
+    :if ([/interface l2tp-client get $tunnelId running] != true) do={{
+        :put ("Step 4: ERROR - tresa-tunnel did not connect to " . $chrHost . ". Check that UDP 500/4500/1701 and ESP are reachable and the IPsec secret matches the CHR.")
+        :error "Tunnel failed to connect"
+    }}
 
     # 5. Restrict API access and install idempotent firewall rules.
     :if (([:len [/interface list find where name="LAN"]] > 0) && ([:len [/interface list member find where interface="tresa-tunnel"]] = 0)) do={{
@@ -209,7 +230,10 @@ def build_secure_setup_script(
     # 6. Confirm provisioning and require real returned values.
     :local confirmBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"status\\\":\\\"ready\\\"}}")
     :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($confirmResult->"status") != "finished") do={{ :error "Provisioning confirmation did not finish" }}
+    :if (($confirmResult->"status") != "finished") do={{
+        :put ("Step 6: ERROR - confirmation request did not finish (status=" . ($confirmResult->"status") . ").")
+        :error "Provisioning confirmation did not finish"
+    }}
     :local confirmData ($confirmResult->"data")
     :local natPort [$tresaJsonValue payload=$confirmData key="nat_port"]
     :local tunnelIp [$tresaJsonValue payload=$confirmData key="tunnel_ip"]
@@ -217,7 +241,10 @@ def build_secure_setup_script(
         :put ("Confirmation response: " . $confirmData)
         :error "Backend did not return a valid tunnel IP and NAT port"
     }}
-    :if ([/interface l2tp-client get $tunnelId running] != true) do={{ :error "Final tunnel verification failed" }}
+    :if ([/interface l2tp-client get $tunnelId running] != true) do={{
+        :put "Step 6: ERROR - tresa-tunnel dropped after the provisioning confirmation step."
+        :error "Final tunnel verification failed"
+    }}
 {walled_garden_block}
     # 8. Final verification summary.
     :local snmpOk "yes"

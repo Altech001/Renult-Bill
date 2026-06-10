@@ -1,7 +1,9 @@
+import os
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import PlainTextResponse
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
@@ -81,9 +83,11 @@ from app.services.routers.concentrator import (
     log_error,
     provision_router,
     register_router,
+    registration_token,
     router_resource,
     run_safe_command,
     save_router_credentials,
+    verify_registration_token,
 )
 from app.services.routers.credentials import decrypt_secret, encrypt_secret
 from app.services.routers.events import router_event_hub
@@ -503,13 +507,21 @@ def publish_router_setup_script(
             detail=f"R2 upload failed: {exc}",
         ) from exc
 
+    # The MikroTik CLI treats "?" as an interactive help/autocomplete hotkey, which
+    # corrupts pasted commands containing presigned R2 URLs (their "?X-Amz-..." query
+    # string gets swallowed mid-paste). Route the import through our own backend
+    # using a path-only token so the customer's command never contains a "?".
+    api_base = payload.api_base_url.rstrip("/")
+    fetch_token = registration_token(db_router.id)
+    fetch_url = f"{api_base}/api/routers/script/{fetch_token}.rsc"
+
     return RouterPublishScriptResponse(
         router_id=db_router.id,
         router_name=db_router.name,
         script_url=url,
-        mikrotik_v7_command=f'/import url="{url}"',
+        mikrotik_v7_command=f'/import url="{fetch_url}"',
         mikrotik_v6_command=(
-            f'/tool fetch url="{url}" dst-path=tresa-setup.rsc\n'
+            f'/tool fetch url="{fetch_url}" dst-path=tresa-setup.rsc\n'
             "/import file-name=tresa-setup.rsc"
         ),
         expires_note=(
@@ -580,6 +592,26 @@ def public_router_confirm(
     except Exception as exc:
         log_error(session, "public_router_confirm", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/api/routers/script/{token}.rsc", response_class=PlainTextResponse)
+def public_router_setup_script(token: str, session: SessionDep) -> PlainTextResponse:
+    try:
+        router_id = verify_registration_token(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db_router = session.get(Router, router_id)
+    if db_router is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Router not found")
+
+    api_base_url = os.getenv("PORTAL_PUBLIC_API_URL", "https://renult.vercel.app").rstrip("/")
+    try:
+        script = build_secure_setup_script(db_router, api_base_url, include_walled_garden=True)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    return PlainTextResponse(script, media_type="text/plain")
 
 
 @router.post("/api/routers/provision", response_model=RouterProvisionResponse)
