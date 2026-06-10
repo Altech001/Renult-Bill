@@ -1,5 +1,5 @@
 # ============================================================
-# TRESA BILL — CHR CONCENTRATOR BOOTSTRAP v6
+# TRESA BILL — CHR CONCENTRATOR BOOTSTRAP v7
 # Platform: Renult / Tresa Bill
 # Run once on the Cloud Hosted Router (CHR).
 # Safe to re-run — every step is idempotent.
@@ -10,9 +10,10 @@
 :local backendHost   "renult.vercel.app"
 :local chrPublicIp   "23.92.30.38"
 :local chrIdentity   "Tresa-CHR-Concentrator"
+:local tunnelSubnet  "10.0.0.0/16"
 
 :put "========================================================"
-:put " TRESA BILL CHR CONCENTRATOR BOOTSTRAP v6"
+:put " TRESA BILL CHR CONCENTRATOR BOOTSTRAP v7"
 :put (" Running on: " . $chrPublicIp)
 :put "========================================================"
 
@@ -138,6 +139,22 @@
 :put "Step 7: Done."
 
 # ============================================================
+# STEP 7B — NAT MASQUERADE FOR TUNNEL-BOUND TRAFFIC
+# Without this, forwarded API/SNMP connections (CHR -> customer
+# router) reach the customer router with the original internet
+# source address. That fails the customer router's
+# "/ip service api address=10.0.0.0/16,..." restriction and the
+# reply would route back out the customer's WAN instead of the
+# tunnel. Masquerading rewrites the source to CHR's tunnel address
+# (10.0.0.1) so the connection is accepted and replies route back
+# through the tunnel to CHR (then un-NAT'd back to the caller).
+# ============================================================
+:put "Step 7b: Configuring NAT masquerade for tunnel-bound traffic..."
+:foreach r in=[/ip firewall nat find where comment="Tresa CHR: masquerade tunnel-bound traffic"] do={ /ip firewall nat remove $r }
+/ip firewall nat add chain=srcnat action=masquerade dst-address=$tunnelSubnet comment="Tresa CHR: masquerade tunnel-bound traffic"
+:put "Step 7b: Done."
+
+# ============================================================
 # STEP 8 — CONNECTIVITY SELF-TEST (backend reachability)
 # ============================================================
 :put "Step 8: Testing connectivity to Renult backend..."
@@ -216,6 +233,13 @@
     :set verifyFailed true
 } else={
     :put "  Firewall rules    : OK"
+}
+
+:if ([:len [/ip firewall nat find where comment="Tresa CHR: masquerade tunnel-bound traffic"]] = 0) do={
+    :put "  VERIFY FAILED: tunnel masquerade NAT rule is missing."
+    :set verifyFailed true
+} else={
+    :put "  Tunnel masquerade : OK"
 }
 
 :if ($verifyFailed = true) do={
