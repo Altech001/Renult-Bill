@@ -395,7 +395,12 @@ def save_router_credentials(
     return router
 
 
-def provision_router(session: Session, router: Router, tunnel_ip: str | None = None) -> Router:
+def provision_router(
+    session: Session,
+    router: Router,
+    tunnel_ip: str | None = None,
+    api: Any | None = None,
+) -> Router:
     try:
         if tunnel_ip:
             router.tunnel_ip = tunnel_ip
@@ -403,8 +408,11 @@ def provision_router(session: Session, router: Router, tunnel_ip: str | None = N
             raise ValueError("Router has not completed PPP registration")
         if router.nat_port is None:
             router.nat_port = _allocate_nat_port(session)
-        with chr_connection() as api:
+        if api is not None:
             _ensure_nat_rule(api, router)
+        else:
+            with chr_connection() as new_api:
+                _ensure_nat_rule(new_api, router)
         now = datetime.utcnow()
         router.port = router.nat_port
         router.host = settings.chr_host
@@ -441,10 +449,10 @@ def confirm_router(session: Session, token: str, mac: str) -> Router:
         raise ValueError("Router registration does not match this MAC address")
     with chr_connection() as api:
         active = api.get_resource("/ppp/active").get(name=router.ppp_username)
-    if not active:
-        raise RuntimeError("L2TP tunnel is not active on the CHR")
-    tunnel_ip = str(active[0].get("address") or router.tunnel_ip)
-    return provision_router(session, router, tunnel_ip)
+        if not active:
+            raise RuntimeError("L2TP tunnel is not active on the CHR")
+        tunnel_ip = str(active[0].get("address") or router.tunnel_ip)
+        return provision_router(session, router, tunnel_ip, api=api)
 
 
 def router_resource(router: Router) -> dict[str, Any]:

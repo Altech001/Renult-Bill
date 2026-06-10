@@ -270,16 +270,23 @@ def build_secure_setup_script(
     :local confirmBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"status\\\":\\\"ready\\\"}}")
     :local confirmHttpStatus "error"
     :local confirmData ""
-    :do {{
-        :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
-        :set confirmHttpStatus ($confirmResult->"status")
-        :set confirmData ($confirmResult->"data")
-    }} on-error={{
-        :put "Step 6: ERROR - the confirmation request to the backend threw an error (timeout, TLS, or connection issue)."
-        :error "Confirmation fetch failed"
+    :local confirmAttempt 0
+    :while (($confirmHttpStatus != "finished") && ($confirmAttempt < 3)) do={{
+        :set confirmAttempt ($confirmAttempt + 1)
+        :do {{
+            :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
+            :set confirmHttpStatus ($confirmResult->"status")
+            :set confirmData ($confirmResult->"data")
+        }} on-error={{
+            :set confirmHttpStatus "error"
+        }}
+        :if (($confirmHttpStatus != "finished") && ($confirmAttempt < 3)) do={{
+            :put ("Step 6: attempt " . $confirmAttempt . " did not complete (status=" . $confirmHttpStatus . "). The backend may still be starting up — retrying in 3s...")
+            :delay 3s
+        }}
     }}
     :if ($confirmHttpStatus != "finished") do={{
-        :put ("Step 6: ERROR - confirmation request did not finish (status=" . $confirmHttpStatus . ").")
+        :put ("Step 6: ERROR - confirmation request did not finish after 3 attempts (last status=" . $confirmHttpStatus . "). Check internet/DNS to " . $apiBase . ".")
         :error "Provisioning confirmation did not finish"
     }}
     :local natPort [$tresaJsonValue payload=$confirmData key="nat_port"]
