@@ -141,12 +141,19 @@ def build_secure_setup_script(
         :put "Step 1: ERROR - no Ethernet interface named (or defaulting to) 'ether1' was found. Run /interface ethernet print, then contact support to customize the script for this hardware."
         :error "ether1 was not found"
     }}
+    :put "Step 1: Internet OK, ether1 found. Reading hardware info..."
     :local macAddress [/interface ethernet get $wanId mac-address]
     :local boardName [/system resource get board-name]
     :local osVersion [/system resource get version]
-    :local serialNumber [/system routerboard get serial-number]
+    :local serialNumber ""
+    :do {{
+        :set serialNumber [/system routerboard get serial-number]
+    }} on-error={{
+        :set serialNumber "CHR"
+    }}
 
     # 2. Register with the configured backend.
+    :put "Step 2: Sending registration request to backend..."
     :local registerBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"model\\\":\\\"" . $boardName . "\\\",\\\"version\\\":\\\"" . $osVersion . "\\\",\\\"serial\\\":\\\"" . $serialNumber . "\\\"}}")
     :local registerResult [/tool fetch url=($apiBase . "/api/routers/register") http-method=post http-data=$registerBody http-header-field="Content-Type: application/json" output=user as-value]
     :if (($registerResult->"status") != "finished") do={{
@@ -168,6 +175,7 @@ def build_secure_setup_script(
     }}
 
     # 3. Create the restricted management account and save its credential.
+    :put "Step 3: Creating local API user and sending credentials to backend..."
     :if ([:len [/user group find where name="tresa-monitor"]] = 0) do={{
         /user group add name="tresa-monitor" policy=api,read,write,test comment="Tresa router monitoring"
     }} else={{
@@ -186,6 +194,7 @@ def build_secure_setup_script(
     }}
 
     # 4. Recreate and verify the L2TP/IPsec tunnel.
+    :put "Step 4: Creating L2TP/IPsec tunnel to CHR (waiting up to 10s to connect)..."
     :foreach oldTunnel in=[/interface l2tp-client find where name="tresa-tunnel"] do={{
         /interface l2tp-client remove $oldTunnel
     }}
@@ -202,6 +211,7 @@ def build_secure_setup_script(
     }}
 
     # 5. Restrict API access and install idempotent firewall rules.
+    :put "Step 5: Configuring firewall, API access and SNMP..."
     :if (([:len [/interface list find where name="LAN"]] > 0) && ([:len [/interface list member find where interface="tresa-tunnel"]] = 0)) do={{
         /interface list member add interface="tresa-tunnel" list=LAN comment="Tresa Bill - DO NOT DELETE"
     }}
@@ -228,6 +238,7 @@ def build_secure_setup_script(
     }}
 
     # 6. Confirm provisioning and require real returned values.
+    :put "Step 6: Confirming provisioning with backend..."
     :local confirmBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"status\\\":\\\"ready\\\"}}")
     :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
     :if (($confirmResult->"status") != "finished") do={{
