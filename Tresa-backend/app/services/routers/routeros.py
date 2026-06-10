@@ -78,8 +78,8 @@ def enable_snmp(router: Router) -> None:
         # be returned when filtering by name via the API.
         all_communities = communities.get()
         matches = [c for c in all_communities if c.get("name") == settings.snmp_community]
-        if matches and matches[0].get(".id"):
-            communities.set(id=matches[0][".id"], **community_params)
+        if matches and matches[0].get("id"):
+            communities.set(id=matches[0]["id"], **community_params)
         else:
             try:
                 communities.add(**community_params)
@@ -88,8 +88,8 @@ def enable_snmp(router: Router) -> None:
                     # Community exists but wasn't found by name filter; refresh and update.
                     all_communities = communities.get()
                     matches = [c for c in all_communities if c.get("name") == settings.snmp_community]
-                    if matches and matches[0].get(".id"):
-                        communities.set(id=matches[0][".id"], **community_params)
+                    if matches and matches[0].get("id"):
+                        communities.set(id=matches[0]["id"], **community_params)
                 else:
                     raise
 
@@ -114,8 +114,8 @@ def enable_snmp(router: Router) -> None:
             src = settings.chr_tunnel_local_address.split("/")[0]
             rule_params["src-address"] = src
 
-        if rules and rules[0].get(".id"):
-            filters.set(id=rules[0][".id"], **rule_params)
+        if rules and rules[0].get("id"):
+            filters.set(id=rules[0]["id"], **rule_params)
         else:
             filters.add(**rule_params)
 

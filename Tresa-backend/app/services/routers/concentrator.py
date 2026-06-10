@@ -179,7 +179,7 @@ def _resource_items(api: Any, path: str) -> list[dict[str, Any]]:
 def _find_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
     rules = _resource_items(api, "/ip/firewall/nat")
     if router.nat_rule_id:
-        match = next((rule for rule in rules if rule.get(".id") == router.nat_rule_id), None)
+        match = next((rule for rule in rules if rule.get("id") == router.nat_rule_id), None)
         if match:
             return match
     comment = f"{NAT_COMMENT_PREFIX}{router.ppp_username}"
@@ -189,7 +189,7 @@ def _find_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
 def _find_snmp_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
     rules = _resource_items(api, "/ip/firewall/nat")
     if router.snmp_nat_rule_id:
-        match = next((rule for rule in rules if rule.get(".id") == router.snmp_nat_rule_id), None)
+        match = next((rule for rule in rules if rule.get("id") == router.snmp_nat_rule_id), None)
         if match:
             return match
     comment = f"{SNMP_NAT_COMMENT_PREFIX}{router.ppp_username}"
@@ -198,7 +198,7 @@ def _find_snmp_nat_rule(api: Any, router: Router) -> dict[str, Any] | None:
 
 def _create_nat_rule(api: Any, router: Router) -> str:
     resource = api.get_resource("/ip/firewall/nat")
-    result = resource.call("add", {
+    payload = {
         "chain": "dstnat",
         "dst-address": settings.chr_host,
         "dst-port": str(router.nat_port),
@@ -207,19 +207,25 @@ def _create_nat_rule(api: Any, router: Router) -> str:
         "to-addresses": str(router.tunnel_ip),
         "to-ports": str(settings.router_api_internal_port),
         "comment": f"{NAT_COMMENT_PREFIX}{router.ppp_username}",
-    })
-    rule_id = result.get(".id") if isinstance(result, dict) else None
+    }
+    result = resource.call("add", payload)
+    rule_id = result.done_message.get("ret")
     if not rule_id:
-        created = _find_nat_rule(api, router)
-        rule_id = created.get(".id") if created else None
+        match_keys = ("dst-port", "to-addresses", "to-ports", "comment")
+        rules = _resource_items(api, "/ip/firewall/nat")
+        match = next(
+            (rule for rule in rules if all(str(rule.get(key, "")) == payload[key] for key in match_keys)),
+            None,
+        )
+        rule_id = match.get("id") if match else None
     if not rule_id:
-        raise RuntimeError("CHR created the NAT rule but did not return its .id")
+        raise RuntimeError("CHR created the NAT rule but did not return its id")
     return str(rule_id)
 
 
 def _create_snmp_nat_rule(api: Any, router: Router) -> str:
     resource = api.get_resource("/ip/firewall/nat")
-    result = resource.call("add", {
+    payload = {
         "chain": "dstnat",
         "dst-address": settings.chr_host,
         "dst-port": str(router.nat_port),
@@ -228,23 +234,29 @@ def _create_snmp_nat_rule(api: Any, router: Router) -> str:
         "to-addresses": str(router.tunnel_ip),
         "to-ports": str(settings.snmp_port),
         "comment": f"{SNMP_NAT_COMMENT_PREFIX}{router.ppp_username}",
-    })
-    rule_id = result.get(".id") if isinstance(result, dict) else None
+    }
+    result = resource.call("add", payload)
+    rule_id = result.done_message.get("ret")
     if not rule_id:
-        created = _find_snmp_nat_rule(api, router)
-        rule_id = created.get(".id") if created else None
+        match_keys = ("dst-port", "to-addresses", "to-ports", "comment")
+        rules = _resource_items(api, "/ip/firewall/nat")
+        match = next(
+            (rule for rule in rules if all(str(rule.get(key, "")) == payload[key] for key in match_keys)),
+            None,
+        )
+        rule_id = match.get("id") if match else None
     if not rule_id:
-        raise RuntimeError("CHR created the SNMP NAT rule but did not return its .id")
+        raise RuntimeError("CHR created the SNMP NAT rule but did not return its id")
     return str(rule_id)
 
 
 def _remove_nat_rule(api: Any, router: Router) -> None:
     rule = _find_nat_rule(api, router)
-    if rule and rule.get(".id"):
-        api.get_resource("/ip/firewall/nat").remove(id=rule[".id"])
+    if rule and rule.get("id"):
+        api.get_resource("/ip/firewall/nat").remove(id=rule["id"])
     snmp_rule = _find_snmp_nat_rule(api, router)
-    if snmp_rule and snmp_rule.get(".id"):
-        api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
+    if snmp_rule and snmp_rule.get("id"):
+        api.get_resource("/ip/firewall/nat").remove(id=snmp_rule["id"])
     router.nat_rule_id = None
     router.snmp_nat_rule_id = None
 
@@ -258,10 +270,10 @@ def _ensure_nat_rule(api: Any, router: Router) -> None:
         "to-ports": str(settings.router_api_internal_port),
     }
     if rule and all(str(rule.get(key, "")) == value for key, value in expected.items()):
-        router.nat_rule_id = str(rule.get(".id"))
+        router.nat_rule_id = str(rule.get("id"))
     else:
-        if rule and rule.get(".id"):
-            api.get_resource("/ip/firewall/nat").remove(id=rule[".id"])
+        if rule and rule.get("id"):
+            api.get_resource("/ip/firewall/nat").remove(id=rule["id"])
         router.nat_rule_id = _create_nat_rule(api, router)
 
     snmp_rule = _find_snmp_nat_rule(api, router)
@@ -272,10 +284,10 @@ def _ensure_nat_rule(api: Any, router: Router) -> None:
         "to-ports": str(settings.snmp_port),
     }
     if snmp_rule and all(str(snmp_rule.get(key, "")) == value for key, value in expected_snmp.items()):
-        router.snmp_nat_rule_id = str(snmp_rule.get(".id"))
+        router.snmp_nat_rule_id = str(snmp_rule.get("id"))
     else:
-        if snmp_rule and snmp_rule.get(".id"):
-            api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
+        if snmp_rule and snmp_rule.get("id"):
+            api.get_resource("/ip/firewall/nat").remove(id=snmp_rule["id"])
         router.snmp_nat_rule_id = _create_snmp_nat_rule(api, router)
 
 
@@ -291,10 +303,10 @@ def ensure_snmp_forwarding(session: Session, router: Router) -> Router:
             "to-ports": str(settings.snmp_port),
         }
         if snmp_rule and all(str(snmp_rule.get(key, "")) == value for key, value in expected.items()):
-            router.snmp_nat_rule_id = str(snmp_rule.get(".id"))
+            router.snmp_nat_rule_id = str(snmp_rule.get("id"))
         else:
-            if snmp_rule and snmp_rule.get(".id"):
-                api.get_resource("/ip/firewall/nat").remove(id=snmp_rule[".id"])
+            if snmp_rule and snmp_rule.get("id"):
+                api.get_resource("/ip/firewall/nat").remove(id=snmp_rule["id"])
             router.snmp_nat_rule_id = _create_snmp_nat_rule(api, router)
     router.updated_at = datetime.utcnow()
     session.add(router)
@@ -488,8 +500,8 @@ def delete_router_from_chr(session: Session, router: Router) -> None:
         if router.ppp_username:
             secrets_found = api.get_resource("/ppp/secret").get(name=router.ppp_username)
             for secret in secrets_found:
-                if secret.get(".id"):
-                    api.get_resource("/ppp/secret").remove(id=secret[".id"])
+                if secret.get("id"):
+                    api.get_resource("/ppp/secret").remove(id=secret["id"])
     _log_audit(session, router, "router_removed")
 
 
