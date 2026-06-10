@@ -132,7 +132,7 @@ def snmp_status_summary(
                 uptime_seconds=item.snmp_uptime_seconds,
                 error=item.snmp_error,
             )
-            for item in configured
+            for item in routers
         ],
     )
 
