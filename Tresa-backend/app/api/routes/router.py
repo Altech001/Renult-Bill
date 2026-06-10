@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
@@ -546,12 +546,9 @@ def public_router_register(
             payload.serial,
         )
         return RouterRegisterResponse(**result)
-    except ValueError as exc:
-        log_error(session, "public_router_register", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         log_error(session, "public_router_register", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        return JSONResponse(content={"status": "error", "error": str(exc)})
 
 
 @router.post("/api/routers/set-credentials")
@@ -568,9 +565,9 @@ def public_router_set_credentials(
             payload.api_pass,
         )
         return {"status": "saved"}
-    except ValueError as exc:
+    except Exception as exc:
         log_error(session, "public_router_set_credentials", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content={"status": "error", "error": str(exc)})
 
 
 @router.post("/api/routers/confirm", response_model=RouterProvisionResponse)
@@ -586,12 +583,9 @@ def public_router_confirm(
             nat_port=db_router.nat_port or 0,
             tunnel_ip=db_router.tunnel_ip or "",
         )
-    except ValueError as exc:
-        log_error(session, "public_router_confirm", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         log_error(session, "public_router_confirm", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        return JSONResponse(content={"status": "error", "error": str(exc)})
 
 
 @router.get("/api/routers/script/{token}.rsc", response_class=PlainTextResponse)

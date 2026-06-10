@@ -171,7 +171,9 @@ def build_secure_setup_script(
     }}
     :local registerStatus [$tresaJsonValue payload=$registerData key="status"]
     :if (($registerStatus != "success") && ($registerStatus != "already_registered")) do={{
-        :put ("Backend response: " . $registerData)
+        :local registerError [$tresaJsonValue payload=$registerData key="error"]
+        :if ($registerError = "") do={{ :set registerError $registerData }}
+        :put ("Step 2: ERROR - backend rejected registration: " . $registerError)
         :error "Backend rejected router registration"
     }}
     :local pppUser [$tresaJsonValue payload=$registerData key="ppp_username"]
@@ -196,9 +198,11 @@ def build_secure_setup_script(
     }}
     :local credentialBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"api_user\\\":\\\"billingapi\\\",\\\"api_pass\\\":\\\"" . $apiPass . "\\\"}}")
     :local credentialHttpStatus "error"
+    :local credentialData ""
     :do {{
         :local credentialResult [/tool fetch url=($apiBase . "/api/routers/set-credentials") http-method=post http-data=$credentialBody http-header-field="Content-Type: application/json" output=user as-value]
         :set credentialHttpStatus ($credentialResult->"status")
+        :set credentialData ($credentialResult->"data")
     }} on-error={{
         :put "Step 3: ERROR - the credential callback threw an error (timeout, TLS, or connection issue)."
         :error "Credential callback fetch failed"
@@ -206,6 +210,12 @@ def build_secure_setup_script(
     :if ($credentialHttpStatus != "finished") do={{
         :put ("Step 3: ERROR - credential callback did not finish (status=" . $credentialHttpStatus . ").")
         :error "Credential callback did not finish"
+    }}
+    :local credentialStatus [$tresaJsonValue payload=$credentialData key="status"]
+    :if ($credentialStatus = "error") do={{
+        :local credentialError [$tresaJsonValue payload=$credentialData key="error"]
+        :put ("Step 3: ERROR - backend rejected credentials: " . $credentialError)
+        :error "Backend rejected credential update"
     }}
 
     # 4. Recreate and verify the L2TP/IPsec tunnel.
@@ -288,6 +298,12 @@ def build_secure_setup_script(
     :if ($confirmHttpStatus != "finished") do={{
         :put ("Step 6: ERROR - confirmation request did not finish after 3 attempts (last status=" . $confirmHttpStatus . "). Check internet/DNS to " . $apiBase . ".")
         :error "Provisioning confirmation did not finish"
+    }}
+    :local confirmStatus [$tresaJsonValue payload=$confirmData key="status"]
+    :if ($confirmStatus = "error") do={{
+        :local confirmError [$tresaJsonValue payload=$confirmData key="error"]
+        :put ("Step 6: ERROR - backend rejected confirmation: " . $confirmError)
+        :error "Backend rejected provisioning confirmation"
     }}
     :local natPort [$tresaJsonValue payload=$confirmData key="nat_port"]
     :local tunnelIp [$tresaJsonValue payload=$confirmData key="tunnel_ip"]
