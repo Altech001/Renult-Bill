@@ -155,12 +155,20 @@ def build_secure_setup_script(
     # 2. Register with the configured backend.
     :put "Step 2: Sending registration request to backend..."
     :local registerBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"model\\\":\\\"" . $boardName . "\\\",\\\"version\\\":\\\"" . $osVersion . "\\\",\\\"serial\\\":\\\"" . $serialNumber . "\\\"}}")
-    :local registerResult [/tool fetch url=($apiBase . "/api/routers/register") http-method=post http-data=$registerBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($registerResult->"status") != "finished") do={{
-        :put ("Step 2: ERROR - registration request to " . $apiBase . "/api/routers/register did not finish (status=" . ($registerResult->"status") . "). Check internet/DNS to " . $apiBase . ".")
+    :local registerHttpStatus "error"
+    :local registerData ""
+    :do {{
+        :local registerResult [/tool fetch url=($apiBase . "/api/routers/register") http-method=post http-data=$registerBody http-header-field="Content-Type: application/json" output=user as-value]
+        :set registerHttpStatus ($registerResult->"status")
+        :set registerData ($registerResult->"data")
+    }} on-error={{
+        :put ("Step 2: ERROR - the registration request to " . $apiBase . "/api/routers/register threw an error (timeout, TLS, or connection issue). Check internet/DNS to " . $apiBase . ".")
+        :error "Registration fetch failed"
+    }}
+    :if ($registerHttpStatus != "finished") do={{
+        :put ("Step 2: ERROR - registration request to " . $apiBase . "/api/routers/register did not finish (status=" . $registerHttpStatus . "). Check internet/DNS to " . $apiBase . ".")
         :error "Backend registration request did not finish"
     }}
-    :local registerData ($registerResult->"data")
     :local registerStatus [$tresaJsonValue payload=$registerData key="status"]
     :if (($registerStatus != "success") && ($registerStatus != "already_registered")) do={{
         :put ("Backend response: " . $registerData)
@@ -187,9 +195,16 @@ def build_secure_setup_script(
         /user set [find where name="billingapi"] password=$apiPass group=tresa-monitor disabled=no comment="Tresa Bill API User - DO NOT DELETE"
     }}
     :local credentialBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"api_user\\\":\\\"billingapi\\\",\\\"api_pass\\\":\\\"" . $apiPass . "\\\"}}")
-    :local credentialResult [/tool fetch url=($apiBase . "/api/routers/set-credentials") http-method=post http-data=$credentialBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($credentialResult->"status") != "finished") do={{
-        :put ("Step 3: ERROR - credential callback did not finish (status=" . ($credentialResult->"status") . ").")
+    :local credentialHttpStatus "error"
+    :do {{
+        :local credentialResult [/tool fetch url=($apiBase . "/api/routers/set-credentials") http-method=post http-data=$credentialBody http-header-field="Content-Type: application/json" output=user as-value]
+        :set credentialHttpStatus ($credentialResult->"status")
+    }} on-error={{
+        :put "Step 3: ERROR - the credential callback threw an error (timeout, TLS, or connection issue)."
+        :error "Credential callback fetch failed"
+    }}
+    :if ($credentialHttpStatus != "finished") do={{
+        :put ("Step 3: ERROR - credential callback did not finish (status=" . $credentialHttpStatus . ").")
         :error "Credential callback did not finish"
     }}
 
@@ -253,12 +268,20 @@ def build_secure_setup_script(
     # 6. Confirm provisioning and require real returned values.
     :put "Step 6: Confirming provisioning with backend..."
     :local confirmBody ("{{\\\"token\\\":\\\"" . $registrationToken . "\\\",\\\"mac\\\":\\\"" . $macAddress . "\\\",\\\"status\\\":\\\"ready\\\"}}")
-    :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
-    :if (($confirmResult->"status") != "finished") do={{
-        :put ("Step 6: ERROR - confirmation request did not finish (status=" . ($confirmResult->"status") . ").")
+    :local confirmHttpStatus "error"
+    :local confirmData ""
+    :do {{
+        :local confirmResult [/tool fetch url=($apiBase . "/api/routers/confirm") http-method=post http-data=$confirmBody http-header-field="Content-Type: application/json" output=user as-value]
+        :set confirmHttpStatus ($confirmResult->"status")
+        :set confirmData ($confirmResult->"data")
+    }} on-error={{
+        :put "Step 6: ERROR - the confirmation request to the backend threw an error (timeout, TLS, or connection issue)."
+        :error "Confirmation fetch failed"
+    }}
+    :if ($confirmHttpStatus != "finished") do={{
+        :put ("Step 6: ERROR - confirmation request did not finish (status=" . $confirmHttpStatus . ").")
         :error "Provisioning confirmation did not finish"
     }}
-    :local confirmData ($confirmResult->"data")
     :local natPort [$tresaJsonValue payload=$confirmData key="nat_port"]
     :local tunnelIp [$tresaJsonValue payload=$confirmData key="tunnel_ip"]
     :if (($natPort = "") || ($natPort = "0") || ($tunnelIp = "")) do={{
