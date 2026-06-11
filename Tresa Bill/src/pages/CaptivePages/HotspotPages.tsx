@@ -146,7 +146,7 @@ export default function HotspotPages() {
                             </CardHeader>
 
                             {/* ── Live portal preview thumbnail ── */}
-                            <div className="relative mx-3 mb-0 rounded-lg overflow-hidden border border-border/30 bg-white">
+                            <div className="relative mx-3 rounded-xl mb-0 overflow-hidden border border-border/30 bg-white">
                                 <ScaledPreview
                                     src={`/captive-portals/preview?template=${tmpl.id}&preview=1`}
                                     title={`${tmpl.title} preview`}

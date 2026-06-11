@@ -320,64 +320,17 @@ export default function CaptiveIndex() {
                                 )}
                                 {currentStep < STEPS.length - 1 && (
                                     <Button size="sm" className="text-xs gap-1" onClick={() => setCurrentStep(s => s + 1)}>
-                                        Next Step <ArrowRight className="w-3.5 h-3.5" />
+                                        Edit & Customise <ArrowRight className="w-3.5 h-3.5" />
                                     </Button>
                                 )}
                             </div>
                         </div>
 
                         <div className="max-w-4xl mx-auto space-y-6">
-                            {/* Step 1: Captive Preview */}
-                            {currentStep === 0 && (
-                                <Card className="border-border/40 shadow-sm rounded overflow-hidden">
-                                    <CardHeader className="py-4 px-5 border-b border-border/30">
-                                        <CardTitle className="text-sm font-bold flex items-center gap-2">
-                                            <Globe className="w-4 h-4 text-primary" /> Live Portal Preview
-                                        </CardTitle>
-                                        <CardDescription className="text-xs">
-                                            This is exactly what your Wi-Fi users will see when they connect. Proceed to the next steps to customise it.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="p-0">
-                                        <div className="relative w-full" style={{ height: "520px" }}>
-                                            <iframe
-                                                key={`${selectedRouterId}-${draft.portal_template}`}
-                                                src={`/captive-portals/preview?template=${draft.portal_template || "renault"}&preview=1`}
-                                                title="Captive Portal Live Preview"
-                                                className="w-full h-full border-0"
-                                                style={{ background: "#fff" }}
-                                                onLoad={(e) => {
-                                                    try {
-                                                        localStorage.setItem("foreform_captive_portal_preview", JSON.stringify({
-                                                            id: draft.id || "preview-id",
-                                                            router_id: selectedRouterId,
-                                                            router_name: routers.find(r => r.id === selectedRouterId)?.name || "Router",
-                                                            title: draft.title,
-                                                            description: draft.description,
-                                                            phone_one: draft.phone_one,
-                                                            phone_two: draft.phone_two,
-                                                            logo_url: draft.logo_url,
-                                                            portal_template: draft.portal_template,
-                                                            last_pushed_at: draft.last_pushed_at
-                                                        }));
-                                                    } catch (_) {}
-                                                }}
-                                            />
-                                        </div>
-                                    </CardContent>
-                                    <div className="px-5 py-3 border-t border-border/30 flex items-center justify-between gap-3 bg-muted/30">
-                                        <span className="text-[11px] text-muted-foreground">
-                                            Template: <strong className="capitalize">{draft.portal_template || "renault"}</strong>
-                                        </span>
-                                        <Button size="sm" className="text-xs gap-1" onClick={() => setCurrentStep(1)}>
-                                            Edit & Customise <ArrowRight className="w-3.5 h-3.5" />
-                                        </Button>
-                                    </div>
-                                </Card>
-                            )}
+
 
                             {/* Step 2: General Info */}
-                            {currentStep === 1 && (
+                            {currentStep === 0 && (
                                 <Card className="border-border/0 shadow-none rounded">
                                     <CardContent className="p-5 space-y-4">
                                         <div>
@@ -406,7 +359,7 @@ export default function CaptiveIndex() {
                             )}
 
                             {/* Step 3: Branding & Appearance */}
-                            {currentStep === 2 && (
+                            {currentStep === 1 && (
                                 <Card className="border-border/0 shadow-none rounded">
                                     <CardHeader className="py-4 px-5 border-b border-border/30">
                                         <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -475,10 +428,10 @@ export default function CaptiveIndex() {
                             )}
 
                             {/* Step 4: Deploy */}
-                            {currentStep === 3 && (
+                            {currentStep === 2 && (
                                 <div className="space-y-4">
                                     {/* Config Summary Card */}
-                                    <Card className="border-border/40 rounded shadow-sm">
+                                    {/* <Card className="border-border/40 rounded shadow-sm">
                                         <CardHeader className="py-4 px-5 border-b border-border/30">
                                             <CardTitle className="text-sm font-bold flex items-center gap-2">
                                                 <Radio className="w-4 h-4 text-primary" /> Deployment Summary
@@ -521,7 +474,7 @@ export default function CaptiveIndex() {
                                                 )}
                                             </div>
                                         </CardContent>
-                                    </Card>
+                                    </Card> */}
 
                                     {/* Push Result Card */}
                                     {deployState === "success" && pushResult && (
