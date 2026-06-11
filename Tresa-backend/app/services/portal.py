@@ -556,38 +556,47 @@ def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -
     router_directory = _router_directory_name(router.name)
     fetched_files: list[str] = []
     fetch_errors: list[str] = []
+    items = list(upload_result["files"].items())
 
-    try:
-        with router_connection(router) as api:
-            try:
-                api.get_resource("/file").add(name=router_directory, type="directory")
-            except Exception:
-                pass  # directory already exists, or RouterOS creates it on fetch
+    # `/tool fetch` can occasionally run past the routeros_api default 15s
+    # socket timeout (slow DNS/TLS to R2 from the router's WAN link). A
+    # timeout on one file leaves the underlying socket closed but still
+    # referenced by this connection, so every later call on it fails with
+    # "[Errno 9] Bad file descriptor". Give fetches more headroom and open a
+    # fresh connection after any per-file error so one bad file can't take
+    # down the rest of the deploy.
+    FETCH_SOCKET_TIMEOUT = 60.0
 
-            tool_resource = api.get_resource("/tool")
-            for remote_name, url in upload_result["files"].items():
+    index = 0
+    while index < len(items):
+        try:
+            with router_connection(router, socket_timeout=FETCH_SOCKET_TIMEOUT) as api:
                 try:
-                    replies = tool_resource.call("fetch", {
-                        "url": url,
-                        "dst-path": f"{router_directory}/{remote_name}",
-                        "mode": "https",
-                    })
-                    status = replies[-1].get("status") if replies else None
-                    if status and status != "finished":
-                        fetch_errors.append(f"{remote_name}: {status}")
-                    else:
-                        fetched_files.append(remote_name)
-                except Exception as exc:
-                    fetch_errors.append(f"{remote_name}: {exc}")
-    except Exception as exc:
-        return {
-            "success": False,
-            "fetched_files": fetched_files,
-            "deployed_directory": router_directory,
-            "updated_profiles": [],
-            "error": str(exc),
-            "diagnostics": {"fetch_errors": "; ".join(fetch_errors)} if fetch_errors else {},
-        }
+                    api.get_resource("/file").add(name=router_directory, type="directory")
+                except Exception:
+                    pass  # directory already exists, or RouterOS creates it on fetch
+
+                tool_resource = api.get_resource("/tool")
+                while index < len(items):
+                    remote_name, url = items[index]
+                    index += 1
+                    try:
+                        replies = tool_resource.call("fetch", {
+                            "url": url,
+                            "dst-path": f"{router_directory}/{remote_name}",
+                            "mode": "https",
+                        })
+                        status = replies[-1].get("status") if replies else None
+                        if status and status != "finished":
+                            fetch_errors.append(f"{remote_name}: {status}")
+                        else:
+                            fetched_files.append(remote_name)
+                    except Exception as exc:
+                        fetch_errors.append(f"{remote_name}: {exc}")
+                        break  # reconnect before fetching the remaining files
+        except Exception as exc:
+            fetch_errors.append(f"connection: {exc}")
+            break
 
     if not fetched_files:
         return {

@@ -30,7 +30,7 @@ def router_defaults() -> dict[str, Any]:
 
 
 @contextmanager
-def router_connection(router: Router) -> Iterator[Any]:
+def router_connection(router: Router, socket_timeout: float | None = None) -> Iterator[Any]:
     if routeros_api is None:
         raise RuntimeError("routeros-api is not installed")
 
@@ -41,6 +41,10 @@ def router_connection(router: Router) -> Iterator[Any]:
         port=router.port,
         plaintext_login=router.plaintext_login,
     )
+    if socket_timeout is not None:
+        # Must be set before get_api() opens the socket — routeros_api reads
+        # this value when creating the connection, not on every call.
+        connection.socket_timeout = socket_timeout
     try:
         yield connection.get_api()
     finally:
