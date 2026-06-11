@@ -500,10 +500,10 @@ def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -
             except Exception:
                 pass  # directory already exists, or RouterOS creates it on fetch
 
-            fetch_resource = api.get_resource("/tool/fetch")
+            tool_resource = api.get_resource("/tool")
             for remote_name, url in upload_result["files"].items():
                 try:
-                    replies = fetch_resource.call("fetch", {
+                    replies = tool_resource.call("fetch", {
                         "url": url,
                         "dst-path": f"{router_directory}/{remote_name}",
                         "mode": "https",

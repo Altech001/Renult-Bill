@@ -28,8 +28,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouters } from "@/hooks/useRouters";
-import { useCaptivePortal, useUpsertCaptivePortal, usePushCaptivePortal } from "@/hooks/useCaptivePortal";
-import { CaptivePortalResponse, PushCaptiveResponse } from "@/api/foreform";
+import { useCaptivePortal, useUpsertCaptivePortal, useDeployCaptivePortalR2 } from "@/hooks/useCaptivePortal";
+import { CaptivePortalResponse, CaptivePortalDeployResponse } from "@/api/foreform";
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
@@ -101,15 +101,12 @@ export default function CaptiveIndex() {
 
     const { data: captivePortalData, isLoading: isLoadingPortal } = useCaptivePortal(selectedRouterId);
     const upsertMutation = useUpsertCaptivePortal(selectedRouterId);
-    const pushMutation = usePushCaptivePortal(selectedRouterId);
+    const deployMutation = useDeployCaptivePortalR2(selectedRouterId);
 
     const [draft, setDraft] = useState<Partial<CaptivePortalResponse> | null>(null);
-    const [pushResult, setPushResult] = useState<PushCaptiveResponse | null>(null);
+    const [pushResult, setPushResult] = useState<CaptivePortalDeployResponse | null>(null);
     const [deployState, setDeployState] = useState<"idle" | "saving" | "pushing" | "success" | "error">("idle");
     const [deployError, setDeployError] = useState<string>("");
-    const [ftpUsername, setFtpUsername] = useState("");
-    const [ftpPassword, setFtpPassword] = useState("");
-    const [ftpPort, setFtpPort] = useState("21");
 
     useEffect(() => {
         if (captivePortalData) {
@@ -184,13 +181,9 @@ export default function CaptiveIndex() {
                 portal_template: draft.portal_template || "renault"
             });
 
-            // Step 2: Push to MikroTik
+            // Step 2: Host on cloud and pull onto the MikroTik via /tool fetch
             setDeployState("pushing");
-            const result = await pushMutation.mutateAsync({
-                ftp_username: ftpUsername.trim() || null,
-                ftp_password: ftpPassword || null,
-                ftp_port: Number(ftpPort) || 21,
-            });
+            const result = await deployMutation.mutateAsync();
 
             if (result.success) {
                 setPushResult(result);
@@ -199,7 +192,7 @@ export default function CaptiveIndex() {
             } else {
                 setDeployState("error");
                 setPushResult(result);
-                setDeployError(result.error || "Push returned unsuccessful status");
+                setDeployError(result.error || "Deployment returned unsuccessful status");
                 toast.error(result.error || "Failed to deploy to MikroTik");
             }
         } catch (err: unknown) {
@@ -530,49 +523,6 @@ export default function CaptiveIndex() {
                                         </CardContent>
                                     </Card>
 
-                                    <Card className="border-border/40 rounded shadow-sm">
-                                        <CardHeader className="py-4 px-5 border-b border-border/30">
-                                            <CardTitle className="text-sm font-bold">FTP Credentials</CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Leave blank to use the saved router login. Use a RouterOS user whose group includes the <strong>ftp</strong> policy.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                            <div>
-                                                <Label htmlFor="ftpUsername" className="text-xs font-bold mb-1.5 block">FTP Username</Label>
-                                                <Input
-                                                    id="ftpUsername"
-                                                    value={ftpUsername}
-                                                    onChange={(event) => setFtpUsername(event.target.value)}
-                                                    placeholder={selectedRouter?.username || "router user"}
-                                                    autoComplete="off"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="ftpPassword" className="text-xs font-bold mb-1.5 block">FTP Password</Label>
-                                                <Input
-                                                    id="ftpPassword"
-                                                    type="password"
-                                                    value={ftpPassword}
-                                                    onChange={(event) => setFtpPassword(event.target.value)}
-                                                    placeholder="Saved password if blank"
-                                                    autoComplete="new-password"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="ftpPort" className="text-xs font-bold mb-1.5 block">FTP Port</Label>
-                                                <Input
-                                                    id="ftpPort"
-                                                    type="number"
-                                                    min={1}
-                                                    max={65535}
-                                                    value={ftpPort}
-                                                    onChange={(event) => setFtpPort(event.target.value)}
-                                                />
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
                                     {/* Push Result Card */}
                                     {deployState === "success" && pushResult && (
                                         <Card className="border-emerald-500/40 bg-emerald-500/5 rounded shadow-sm">
@@ -582,7 +532,7 @@ export default function CaptiveIndex() {
                                                     <span className="text-sm font-bold">Deployment Successful</span>
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">
-                                                    Router: <strong>{pushResult.router_name}</strong> — {pushResult.pushed_files.length} file{pushResult.pushed_files.length !== 1 ? "s" : ""} deployed
+                                                    Router: <strong>{pushResult.router_name}</strong> — {pushResult.fetched_files.length} file{pushResult.fetched_files.length !== 1 ? "s" : ""} deployed
                                                 </p>
                                                 {pushResult.deployed_directory && (
                                                     <p className="text-xs text-muted-foreground">
@@ -592,9 +542,9 @@ export default function CaptiveIndex() {
                                                         )}
                                                     </p>
                                                 )}
-                                                {pushResult.pushed_files.length > 0 && (
+                                                {pushResult.fetched_files.length > 0 && (
                                                     <div className="space-y-1">
-                                                        {pushResult.pushed_files.map((file, i) => (
+                                                        {pushResult.fetched_files.map((file, i) => (
                                                             <div key={i} className="flex items-center gap-1.5 text-xs text-emerald-700 font-mono bg-emerald-500/10 px-2.5 py-1 rounded">
                                                                 <FileText className="w-3 h-3 shrink-0" /> {file}
                                                             </div>
@@ -665,7 +615,7 @@ export default function CaptiveIndex() {
                                                 ) : deployState === "pushing" ? (
                                                     <>
                                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                                        Uploading to MikroTik Router...
+                                                        Deploying to MikroTik Router...
                                                     </>
                                                 ) : deployState === "success" ? (
                                                     <>
@@ -686,7 +636,7 @@ export default function CaptiveIndex() {
                                                     <Upload className="w-3.5 h-3.5 animate-bounce text-primary" />
                                                     {deployState === "saving"
                                                         ? "Persisting portal settings to backend database..."
-                                                        : "Pushing login.html, index.html + assets to router directory..."
+                                                        : "Hosting portal on cloud and pulling files onto your router..."
                                                     }
                                                 </div>
                                             )}
