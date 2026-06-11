@@ -30,3 +30,13 @@ export function usePushCaptivePortal(routerId: string) {
     },
   });
 }
+
+export function useDeployCaptivePortalR2(routerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => renultApi.captivePortal.deployR2(routerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["captivePortal", routerId] });
+    },
+  });
+}

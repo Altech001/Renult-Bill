@@ -20,9 +20,11 @@ from app.models.voucher_purchase import VoucherPurchase
 from app.models.wallet import Wallet
 from app.services.routers.Packages import get_router_packages
 from app.services.routers.routeros import router_connection
+from app.services.storage import STORAGE_ERRORS, object_url, upload_bytes
 
 
 PORTAL_ROOT = Path("app/portal")
+CAPTIVE_PORTAL_R2_PREFIX = "captive-portal"
 DEFAULT_CAPTIVE_TITLE = "Renault WIFI"
 DEFAULT_CAPTIVE_DESCRIPTION = "High-speed internet access portal"
 
@@ -411,6 +413,168 @@ def _set_hotspot_portal_configuration(router: Router, directory: str) -> tuple[l
                 walled_garden.add(action="allow", **{"dst-host": api_host})
             allowed_hosts.append(api_host)
     return updated_profiles, allowed_hosts
+
+
+def _captive_portal_r2_key(router: Router, remote_name: str) -> str:
+    return f"{CAPTIVE_PORTAL_R2_PREFIX}/{router.id}/{remote_name}"
+
+
+def _portal_file_content_type(path: Path) -> str:
+    return {
+        ".html": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".txt": "text/plain; charset=utf-8",
+    }.get(path.suffix.lower(), "application/octet-stream")
+
+
+def _portal_template_files(template_dir: Path, router: Router) -> list[tuple[str, bytes, Path]]:
+    """Return (remote_name, rendered_content, source_path) for every file to deploy."""
+    files: list[tuple[str, bytes, Path]] = []
+    for path in sorted(template_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(template_dir).as_posix()
+        if relative_path == "index.html":
+            remote_names = ["index.html", "login.html"]
+        elif relative_path == "login.html" and not (template_dir / "index.html").exists():
+            remote_names = ["login.html", "index.html"]
+        else:
+            remote_names = [relative_path]
+        content = _render_portal_file(path, router)
+        for remote_name in remote_names:
+            files.append((remote_name, content, path))
+    return files
+
+
+def push_captive_portal_to_r2(
+    router: Router,
+    template: str = "renault",
+    expires_in: int = 3600,
+) -> dict[str, Any]:
+    """Render this router's captive portal template and upload it to Cloudflare R2."""
+    template_dir = PORTAL_ROOT / template
+    if not template_dir.exists():
+        return {"success": False, "files": {}, "error": f"Portal template '{template}' not found"}
+
+    files: dict[str, str] = {}
+    try:
+        for remote_name, content, source_path in _portal_template_files(template_dir, router):
+            key = _captive_portal_r2_key(router, remote_name)
+            upload_bytes(key, content, content_type=_portal_file_content_type(source_path))
+            files[remote_name] = object_url(key, expires_in=expires_in)
+    except STORAGE_ERRORS as exc:
+        return {"success": False, "files": files, "error": f"R2 upload failed: {exc}"}
+
+    return {"success": True, "files": files, "error": None}
+
+
+def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -> dict[str, Any]:
+    """
+    Push the rendered captive portal to R2, then have the router pull each file
+    down with `/tool fetch` over its API connection and point the hotspot
+    profile(s) at the resulting directory.
+    """
+    upload_result = push_captive_portal_to_r2(router, template, expires_in=3600)
+    if not upload_result["success"]:
+        return {
+            "success": False,
+            "fetched_files": [],
+            "deployed_directory": None,
+            "updated_profiles": [],
+            "error": upload_result["error"],
+            "diagnostics": {},
+        }
+
+    router_directory = _router_directory_name(router.name)
+    fetched_files: list[str] = []
+    fetch_errors: list[str] = []
+
+    try:
+        with router_connection(router) as api:
+            try:
+                api.get_resource("/file").add(name=router_directory, type="directory")
+            except Exception:
+                pass  # directory already exists, or RouterOS creates it on fetch
+
+            fetch_resource = api.get_resource("/tool/fetch")
+            for remote_name, url in upload_result["files"].items():
+                try:
+                    replies = fetch_resource.call("fetch", {
+                        "url": url,
+                        "dst-path": f"{router_directory}/{remote_name}",
+                        "mode": "https",
+                    })
+                    status = replies[-1].get("status") if replies else None
+                    if status and status != "finished":
+                        fetch_errors.append(f"{remote_name}: {status}")
+                    else:
+                        fetched_files.append(remote_name)
+                except Exception as exc:
+                    fetch_errors.append(f"{remote_name}: {exc}")
+    except Exception as exc:
+        return {
+            "success": False,
+            "fetched_files": fetched_files,
+            "deployed_directory": router_directory,
+            "updated_profiles": [],
+            "error": str(exc),
+            "diagnostics": {"fetch_errors": "; ".join(fetch_errors)} if fetch_errors else {},
+        }
+
+    if not fetched_files:
+        return {
+            "success": False,
+            "fetched_files": fetched_files,
+            "deployed_directory": router_directory,
+            "updated_profiles": [],
+            "error": "; ".join(fetch_errors) or "No captive portal files were fetched.",
+            "diagnostics": {"fetch_errors": "; ".join(fetch_errors)} if fetch_errors else {},
+        }
+
+    try:
+        updated_profiles, allowed_hosts = _set_hotspot_portal_configuration(router, router_directory)
+    except Exception as exc:
+        return {
+            "success": False,
+            "fetched_files": fetched_files,
+            "deployed_directory": router_directory,
+            "updated_profiles": [],
+            "error": f"Files were fetched, but updating the hotspot profile failed: {exc}",
+            "diagnostics": {"fetch_errors": "; ".join(fetch_errors)} if fetch_errors else {},
+        }
+
+    diagnostics = {
+        "walled_garden_hosts": ",".join(allowed_hosts) or "none",
+        "updated_hotspot_profiles": ",".join(updated_profiles) or "none",
+    }
+    if fetch_errors:
+        diagnostics["fetch_errors"] = "; ".join(fetch_errors)
+
+    if not updated_profiles:
+        return {
+            "success": False,
+            "fetched_files": fetched_files,
+            "deployed_directory": router_directory,
+            "updated_profiles": [],
+            "error": (
+                f"Files were fetched into /{router_directory}, but no active hotspot server profile "
+                "was found to update its html-directory."
+            ),
+            "diagnostics": diagnostics,
+        }
+
+    return {
+        "success": not fetch_errors,
+        "fetched_files": fetched_files,
+        "deployed_directory": router_directory,
+        "updated_profiles": updated_profiles,
+        "error": "; ".join(fetch_errors) if fetch_errors else None,
+        "diagnostics": diagnostics,
+    }
 
 
 def push_captive_files_to_mikrotik(

@@ -105,6 +105,22 @@ export default function CaptivePreview() {
   // Time remaining count down (starts at 2 hours)
   const [timeLeft, setTimeLeft] = useState(7200);
 
+  // Ad carousel state
+  const [currentAdIndex, setCurrentAdIndex] = useState(0);
+  const ads = [
+    { title: "🚀 Turbo Internet Speed", desc: "Upgrade to our SuperFast package for seamless 4K video streaming and downloads!" },
+    { title: "⚡ Instant Mobile Money", desc: "Pay with MTN or Airtel Money for immediate voucher activation. Fully secured gateway." },
+    { title: "📞 24/7 Helpline Support", desc: "Need assistance? Contact our team on WhatsApp using support numbers listed below." }
+  ];
+
+  useEffect(() => {
+    if (config.portal_template !== "blue_modern") return;
+    const interval = setInterval(() => {
+      setCurrentAdIndex(prev => (prev + 1) % ads.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [config.portal_template]);
+
   useEffect(() => {
     if (step !== "success") return;
     const timer = setInterval(() => {
@@ -206,9 +222,45 @@ export default function CaptivePreview() {
   // Theme visual classes for standard portal
   const getThemeClasses = (themeName: string) => {
     switch (themeName) {
+      case "classic":
+        return {
+          wrapper: "bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between",
+          card: "bg-white border border-slate-200 shadow-md text-slate-800 rounded-none",
+          input: "bg-slate-50 border-slate-300 text-slate-900 focus:ring-slate-900 placeholder-slate-400 rounded-none",
+          button: "bg-slate-950 text-white hover:bg-slate-850 font-bold rounded-none",
+          logo: "text-slate-950 font-black font-serif",
+          pill: "bg-slate-100 text-slate-700 border border-slate-200"
+        };
+      case "modern":
+        return {
+          wrapper: "bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between",
+          card: "bg-slate-900/70 backdrop-blur-md border border-purple-500/20 text-slate-100 shadow-2xl rounded-2xl shadow-purple-500/5",
+          input: "bg-slate-800/80 border-slate-700 text-slate-100 focus:ring-purple-500 placeholder-slate-500 rounded-xl",
+          button: "bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:opacity-95 font-semibold rounded-xl shadow-lg shadow-purple-500/20",
+          logo: "text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400 font-black",
+          pill: "bg-purple-950/40 text-purple-300 border border-purple-800/30"
+        };
+      case "blue_modern":
+        return {
+          wrapper: "bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 text-white min-h-screen flex flex-col justify-between",
+          card: "bg-white/10 backdrop-blur-md border border-white/20 text-white shadow-xl rounded-xl",
+          input: "bg-white/15 border-white/20 text-white placeholder-white/50 focus:bg-white/20 focus:ring-blue-400 rounded-lg",
+          button: "bg-gradient-to-r from-blue-500 to-cyan-500 text-white hover:opacity-95 font-bold rounded-lg shadow-lg shadow-blue-500/20",
+          logo: "text-blue-300 font-extrabold tracking-wide",
+          pill: "bg-blue-950/60 text-blue-200 border border-blue-500/30"
+        };
+      case "brown_cards":
+        return {
+          wrapper: "bg-[#F5F2EB] text-[#4A3C31] min-h-screen flex flex-col justify-between",
+          card: "bg-[#EFEBE4] border border-[#DDD5C7] text-[#4A3C31] shadow-lg rounded-2xl",
+          input: "bg-[#FAF8F5] border-[#C8BDB0] text-[#4A3C31] focus:ring-[#8B5A2B] placeholder-[#A09385] rounded-xl",
+          button: "bg-[#8B5A2B] text-white hover:bg-[#724922] font-semibold rounded-xl shadow-md",
+          logo: "text-[#5C3A21] font-bold",
+          pill: "bg-[#E5DFD5] text-[#725E4D]"
+        };
       case "dark":
         return {
-          wrapper: "bg-slate-950 text-slate-100",
+          wrapper: "bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between",
           card: "bg-slate-900/90 border border-slate-800 text-slate-100",
           input: "bg-slate-800 border-slate-700 text-slate-100 focus:ring-primary placeholder-slate-500",
           button: "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -217,7 +269,7 @@ export default function CaptivePreview() {
         };
       case "glassmorphic":
         return {
-          wrapper: "bg-gradient-to-tr from-violet-600 via-purple-600 to-indigo-600 text-white min-h-screen",
+          wrapper: "bg-gradient-to-tr from-violet-600 via-purple-600 to-indigo-600 text-white min-h-screen flex flex-col justify-between",
           card: "bg-white/10 backdrop-blur-xl border border-white/20 text-white shadow-2xl",
           input: "bg-white/10 border-white/25 text-white placeholder-white/60 focus:bg-white/20 focus:ring-white",
           button: "bg-white text-violet-700 hover:bg-slate-100 font-semibold shadow-lg",
@@ -226,7 +278,7 @@ export default function CaptivePreview() {
         };
       case "sunset":
         return {
-          wrapper: "bg-gradient-to-br from-amber-500 via-red-500 to-pink-600 text-white min-h-screen",
+          wrapper: "bg-gradient-to-br from-amber-500 via-red-500 to-pink-600 text-white min-h-screen flex flex-col justify-between",
           card: "bg-black/20 backdrop-blur-md border border-white/10 text-white shadow-xl",
           input: "bg-white/20 border-white/20 text-white placeholder-white/70 focus:bg-white/30",
           button: "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 hover:opacity-90 font-bold",
@@ -235,7 +287,7 @@ export default function CaptivePreview() {
         };
       case "ocean":
         return {
-          wrapper: "bg-gradient-to-br from-cyan-600 via-teal-600 to-emerald-600 text-white min-h-screen",
+          wrapper: "bg-gradient-to-br from-cyan-600 via-teal-600 to-emerald-600 text-white min-h-screen flex flex-col justify-between",
           card: "bg-teal-950/40 backdrop-blur-lg border border-teal-500/20 text-white shadow-xl",
           input: "bg-teal-950/50 border-teal-500/30 text-teal-50 placeholder-teal-200/50 focus:bg-teal-950/60",
           button: "bg-emerald-400 text-teal-950 hover:bg-emerald-300 font-bold",
@@ -245,7 +297,7 @@ export default function CaptivePreview() {
       case "light":
       default:
         return {
-          wrapper: "bg-slate-50 text-slate-900",
+          wrapper: "bg-slate-50 text-slate-900 min-h-screen flex flex-col justify-between",
           card: "bg-white border border-slate-200 shadow-xl text-slate-800",
           input: "bg-white border-slate-300 text-slate-900 focus:ring-slate-500 placeholder-slate-400",
           button: "bg-slate-900 text-white hover:bg-slate-800",
@@ -614,6 +666,33 @@ export default function CaptivePreview() {
                       {config.description || "Enjoy complimentary high-speed internet connection."}
                     </p>
                   </div>
+
+                  {/* Ads Carousel (Blue Modern only) */}
+                  {config.portal_template === "blue_modern" && (
+                    <div className="w-full bg-blue-950/40 border border-blue-500/20 rounded-lg p-3 space-y-1 relative overflow-hidden transition-all duration-300">
+                      <div className="flex items-center gap-1.5 text-[9px] font-black uppercase text-blue-300 tracking-wider">
+                        <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        Sponsored Promotion
+                      </div>
+                      <div className="min-h-[48px] flex flex-col justify-center">
+                        <h4 className="text-[11px] font-bold text-white transition-opacity duration-300">
+                          {ads[currentAdIndex].title}
+                        </h4>
+                        <p className="text-[10px] text-blue-100/70 leading-normal transition-opacity duration-300">
+                          {ads[currentAdIndex].desc}
+                        </p>
+                      </div>
+                      <div className="flex justify-center gap-1 pt-1.5">
+                        {ads.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setCurrentAdIndex(idx)}
+                            className={`w-1.5 h-1.5 rounded-full transition-all ${currentAdIndex === idx ? "bg-cyan-400 w-3" : "bg-white/30"}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Standard Connect Options */}
                   <div className="space-y-4">

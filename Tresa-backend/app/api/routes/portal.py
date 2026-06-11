@@ -11,6 +11,7 @@ from app.models.captive_portal import CaptivePortal
 from app.models.router import Router
 from app.models.staff import Staff
 from app.schemas.portal import (
+    CaptivePortalDeployResponse,
     CaptivePortalPushRequest,
     CaptivePortalResponse,
     CaptivePortalUpsert,
@@ -21,6 +22,7 @@ from app.schemas.portal import (
     PushCaptiveResponse,
 )
 from app.services.portal import (
+    deploy_captive_portal_via_fetch,
     find_router_by_name,
     find_vouchers,
     get_public_captive_config,
@@ -205,6 +207,37 @@ def push_router_captive(
         router_id=db_router.id,
         router_name=db_router.name,
         pushed_files=result["pushed_files"],
+        deployed_directory=result.get("deployed_directory"),
+        updated_profiles=result.get("updated_profiles", []),
+        error=result["error"],
+        diagnostics=result.get("diagnostics", {}),
+    )
+
+
+@router.post("/routers/{router_id}/captive/deploy-r2", response_model=CaptivePortalDeployResponse)
+def deploy_router_captive_r2(
+    router_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+) -> CaptivePortalDeployResponse:
+    """Auto-deploy the captive portal: host it on R2, then have the router pull it via /tool fetch."""
+    db_router = check_router_ownership(session, router_id, user.id)
+    captive = session.exec(select(CaptivePortal).where(CaptivePortal.router_id == db_router.id)).first()
+    template = captive.portal_template if captive else "renault"
+    result = deploy_captive_portal_via_fetch(db_router, template)
+
+    if captive and result["success"]:
+        captive.last_pushed_at = datetime.utcnow()
+        captive.router_name = normalize_router_name(db_router.name)
+        captive.updated_at = datetime.utcnow()
+        session.add(captive)
+        session.commit()
+
+    return CaptivePortalDeployResponse(
+        success=result["success"],
+        router_id=db_router.id,
+        router_name=db_router.name,
+        fetched_files=result["fetched_files"],
         deployed_directory=result.get("deployed_directory"),
         updated_profiles=result.get("updated_profiles", []),
         error=result["error"],

@@ -64,11 +64,11 @@ export function useDeleteRouter(branchId?: string) {
   });
 }
 
-export function useRouterStatus(routerId: string) {
+export function useRouterStatus(routerId: string, enabled = true) {
   return useQuery({
     queryKey: ["routerStatus", routerId],
     queryFn: () => renultApi.routers.status(routerId),
-    enabled: !!routerId,
+    enabled: !!routerId && enabled,
     refetchInterval: 10000,
     retry: 1,
   });

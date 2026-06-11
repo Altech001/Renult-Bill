@@ -3,9 +3,9 @@ import SEO from "@/components/SEO";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import {
     Select,
@@ -14,39 +14,32 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import {
-    useBranchActiveUsers,
     useBranchVouchers,
     useDeleteRouterVoucher,
     useDeleteRouterVoucherBatch,
     useFetchRouterVouchers,
+    useQueueRouterVouchers,
     useRouterPackages,
     useRouters,
     useSyncRouterVouchers,
-    useQueueRouterVouchers,
     useVoucherJob,
 } from "@/hooks/useRouters";
-import VoucherRegistryTables, { RegistryBatch, RegistryVoucher } from "./VoucherRegistryTables";
+import { cn } from "@/lib/utils";
 import { downloadVoucherPdf } from "@/lib/voucherPdf";
 import { voucherUiStatus } from "@/lib/voucherStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-    Activity,
-    Barcode,
     CheckCircle2,
+    CloudUpload,
     Coins,
     Download,
-    CloudUpload,
     Hash,
     Loader2,
     Phone,
-    Plus,
     Printer,
     RefreshCw,
-    Router,
     Search,
     Sliders,
     Sparkles,
@@ -54,11 +47,11 @@ import {
     Trash2,
     Users,
     Wifi,
-    WifiOff,
     X
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { BulkBatchesTable, IndividualVouchersTable, RegistryBatch, RegistryVoucher } from "./VoucherRegistryTables";
+
 import { toast } from "sonner";
 
 // Internet Package Interfaces
@@ -131,14 +124,19 @@ export default function VouchersIndex() {
     const syncRouterVouchers = useSyncRouterVouchers(selectedRouterId, branchId);
     const routerPackages: InternetPackage[] = useMemo(() => {
         const items = routerPackagesResponse?.data.voucher || [];
-        return items.map((item) => ({
-            id: String(item.package_id),
-            packageId: item.package_id,
-            name: `${item.speed_type} ${item.limit}`,
-            duration: item.limit,
-            price: Number(item.total || 0),
-            description: item.data,
-        }));
+        return items
+            .filter((item) => {
+                const name = `${item.speed_type} ${item.limit}`.toUpperCase();
+                return !name.includes("AB-") && !name.includes("STAFF");
+            })
+            .map((item) => ({
+                id: String(item.package_id),
+                packageId: item.package_id,
+                name: `${item.speed_type} ${item.limit}`,
+                duration: item.limit,
+                price: Number(item.total || 0),
+                description: item.data,
+            }));
     }, [routerPackagesResponse]);
     const availablePackages = routerPackages;
 
@@ -150,55 +148,41 @@ export default function VouchersIndex() {
 
     // Only a live RouterOS session is active; provisioned codes remain ready to use.
     const vouchers: Voucher[] = useMemo(() => {
-        return (branchVouchersResponse?.vouchers || []).map((voucher) => ({
-            id: voucher.voucher_code,
-            phone: (voucher.phone_number === "BULK" || !voucher.phone_number) ? undefined : voucher.phone_number,
-            routerName: voucher.router_name,
-            packageName: `${voucher.speed_type} ${voucher.profile}`,
-            duration: voucher.profile,
-            pricePaid: voucher.amount,
-            purchaseTime: voucher.created_at.replace('T', ' ').substring(0, 19),
-            status: voucherUiStatus(voucher.status),
-            type: voucher.payment_reference?.startsWith("BAT-") ? "Bulk" : "Single",
-            batchId: voucher.payment_reference?.startsWith("BAT-") ? voucher.payment_reference : undefined,
-        }));
+        return (branchVouchersResponse?.vouchers || [])
+            .filter((v) => {
+                const code = (v.voucher_code || "").toUpperCase();
+                const profile = (v.profile || "").toUpperCase();
+                const speedType = (v.speed_type || "").toUpperCase();
+                const phone = (v.phone_number || "").toUpperCase();
+                const ref = (v.payment_reference || "").toUpperCase();
+                const isAbOrStaff = code.includes("AB-") || code.includes("STAFF") ||
+                    profile.includes("AB-") || profile.includes("STAFF") ||
+                    speedType.includes("AB-") || speedType.includes("STAFF") ||
+                    phone.includes("AB-") || phone.includes("STAFF") ||
+                    ref.includes("AB-") || ref.includes("STAFF");
+                return !isAbOrStaff;
+            })
+            .map((voucher) => ({
+                id: voucher.voucher_code,
+                phone: (voucher.phone_number === "BULK" || !voucher.phone_number) ? undefined : voucher.phone_number,
+                routerName: voucher.router_name,
+                packageName: `${voucher.speed_type} ${voucher.profile}`,
+                duration: voucher.profile,
+                pricePaid: voucher.amount,
+                purchaseTime: voucher.created_at.replace('T', ' ').substring(0, 19),
+                status: voucherUiStatus(voucher.status),
+                type: voucher.payment_reference?.startsWith("BAT-") ? "Bulk" : "Single",
+                batchId: voucher.payment_reference?.startsWith("BAT-") ? voucher.payment_reference : undefined,
+            }));
     }, [branchVouchersResponse]);
 
     // Active Tab
-    const [searchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState<string>(
-        () => (searchParams.get("tab") === "active-users" ? "active-users" : "generator"),
-    );
+    const [activeTab, setActiveTab] = useState<string>("generator");
 
-    // Active Users (aggregated across all routers in this branch)
-    const activeUsersQueries = useBranchActiveUsers(routers);
-    const activeUsersLoading = routers.length > 0 && activeUsersQueries.some((query) => query.isLoading);
-    const activeUsers = useMemo(() => {
-        return activeUsersQueries.flatMap((query, index) => {
-            const router = routers[index];
-            const items = query.data?.active_users || [];
-            return items.map((item, itemIndex) => ({
-                id: `${router.id}-${item[".id"] || item.id || itemIndex}`,
-                routerName: router.name,
-                device: String(item["login-by"] || item["server"] || "Hotspot client"),
-                ip: String(item.address || "N/A"),
-                mac: String(item["mac-address"] || "N/A"),
-                user: String(item.user || item.name || "N/A"),
-                uptime: String(item.uptime || "N/A"),
-                uploaded: String(item["bytes-in"] || "0 B"),
-                downloaded: String(item["bytes-out"] || "0 B"),
-            }));
-        });
-    }, [activeUsersQueries, routers]);
-
-    // Single Voucher Form State
-    const [singlePhone, setSinglePhone] = useState<string>("");
-    const [singlePackageId, setSinglePackageId] = useState<string>(availablePackages[0]?.id || "");
-    const [singlePrice, setSinglePrice] = useState<number>(availablePackages[0]?.price || 0);
-    const [singlePhoneError, setSinglePhoneError] = useState<string>("");
-
-    // Bulk Voucher Form State
+    // Voucher Generator State
     const [bulkQuantity, setBulkQuantity] = useState<number>(300);
+    const [bulkPhone, setBulkPhone] = useState<string>("");
+    const [bulkPhoneError, setBulkPhoneError] = useState<string>("");
     const [bulkPrefix, setBulkPrefix] = useState<string>("");
     const [bulkFormat, setBulkFormat] = useState<VoucherCodeFormat>("alphanumeric-upper");
     const [bulkLength, setBulkLength] = useState<number>(6);
@@ -264,7 +248,7 @@ export default function VouchersIndex() {
                 setSelectedVouchers([]);
                 toast.success(`Created and verified ${result.count} vouchers on MikroTik.`);
             } else {
-                setSinglePhone("");
+                setBulkPhone("");
                 toast.success(`Created and verified voucher ${result.vouchers[0]?.voucher_code || ""}.`);
             }
             if (result.router_sync_error) toast.warning(result.router_sync_error);
@@ -287,19 +271,10 @@ export default function VouchersIndex() {
 
     useEffect(() => {
         if (availablePackages.length === 0) return;
-        if (!availablePackages.some((pkg) => pkg.id === singlePackageId)) {
-            setSinglePackageId(availablePackages[0].id);
-        }
         if (!availablePackages.some((pkg) => pkg.id === bulkPackageId)) {
             setBulkPackageId(availablePackages[0].id);
         }
-    }, [availablePackages, bulkPackageId, singlePackageId]);
-
-    // Sync package prices when changed
-    useEffect(() => {
-        const pkg = availablePackages.find(p => p.id === singlePackageId);
-        if (pkg) setSinglePrice(pkg.price);
-    }, [availablePackages, singlePackageId]);
+    }, [availablePackages, bulkPackageId]);
 
     useEffect(() => {
         const pkg = availablePackages.find(p => p.id === bulkPackageId);
@@ -307,61 +282,22 @@ export default function VouchersIndex() {
     }, [availablePackages, bulkPackageId]);
 
     // Phone Validation
-    const validatePhone = (phone: string) => {
+    const validateBulkPhone = (phone: string) => {
         if (!phone) {
-            setSinglePhoneError("Phone number is required");
+            setBulkPhoneError("Phone number is required");
             return false;
         }
         // simple regex to check positive digit count
         const cleaned = phone.replace(/[^0-9+]/g, "");
         if (cleaned.length < 9) {
-            setSinglePhoneError("Phone number is too short");
+            setBulkPhoneError("Phone number is too short");
             return false;
         }
-        setSinglePhoneError("");
+        setBulkPhoneError("");
         return true;
     };
 
-    // Generate Single Voucher Action
-    const handleCreateSingle = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedRouterId) {
-            toast.error("Select a router first.");
-            return;
-        }
-        if (!validatePhone(singlePhone)) {
-            toast.error("Please provide a valid phone number.");
-            return;
-        }
-
-        const selectedPkg = availablePackages.find(p => p.id === singlePackageId);
-        if (!selectedPkg) {
-            toast.error("Create or sync packages for this router first.");
-            return;
-        }
-
-        try {
-            await queueVoucherJob({
-                package_id: selectedPkg.packageId || Number(selectedPkg.id),
-                quantity: 1,
-                amount: singlePrice,
-                phone_number: singlePhone.trim(),
-                prefix: "VCH-",
-                code_length: 8,
-                code_format: "alphanumeric-upper",
-            }, {
-                type: "single",
-                packageName: selectedPkg.name,
-                duration: selectedPkg.duration,
-                price: singlePrice,
-                wifiName: selectedRouter?.name,
-            });
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to queue voucher.");
-        }
-    };
-
-    // Generate Bulk Vouchers Action
+    // Generate Vouchers Action (handles both Single and Bulk depending on quantity)
     const handleCreateBulk = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedRouterId) {
@@ -373,34 +309,61 @@ export default function VouchersIndex() {
             return;
         }
 
+        if (bulkQuantity === 1 && !validateBulkPhone(bulkPhone)) {
+            toast.error("Please provide a valid phone number.");
+            return;
+        }
+
         const selectedPkg = availablePackages.find(p => p.id === bulkPackageId);
         if (!selectedPkg) {
             toast.error("Create or sync packages for this router first.");
             return;
         }
 
-        const prefixLabel = (bulkPrefix || "BATCH").replace(/^BAT-?/i, "").replace(/[^A-Z0-9]/gi, "").toUpperCase() || "BATCH";
-        const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-        const batchId = `BAT-${prefixLabel}-${timestamp}`;
-        try {
-            await queueVoucherJob({
-                package_id: selectedPkg.packageId || Number(selectedPkg.id),
-                quantity: bulkQuantity,
-                amount: bulkPrice,
-                prefix: bulkPrefix,
-                code_length: bulkLength,
-                code_format: bulkFormat,
-                payment_reference: batchId,
-            }, {
-                type: "bulk",
-                packageName: selectedPkg.name,
-                duration: selectedPkg.duration,
-                price: bulkPrice,
-                batchId,
-                wifiName: selectedRouter?.name,
-            });
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to queue voucher batch.");
+        if (bulkQuantity === 1) {
+            try {
+                await queueVoucherJob({
+                    package_id: selectedPkg.packageId || Number(selectedPkg.id),
+                    quantity: 1,
+                    amount: bulkPrice,
+                    phone_number: bulkPhone.trim(),
+                    prefix: bulkPrefix || "",
+                    code_length: bulkLength,
+                    code_format: bulkFormat,
+                }, {
+                    type: "single",
+                    packageName: selectedPkg.name,
+                    duration: selectedPkg.duration,
+                    price: bulkPrice,
+                    wifiName: selectedRouter?.name,
+                });
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Failed to queue voucher.");
+            }
+        } else {
+            const prefixLabel = (bulkPrefix || "BATCH").replace(/^BAT-?/i, "").replace(/[^A-Z0-9]/gi, "").toUpperCase() || "BATCH";
+            const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+            const batchId = `BAT-${prefixLabel}-${timestamp}`;
+            try {
+                await queueVoucherJob({
+                    package_id: selectedPkg.packageId || Number(selectedPkg.id),
+                    quantity: bulkQuantity,
+                    amount: bulkPrice,
+                    prefix: bulkPrefix,
+                    code_length: bulkLength,
+                    code_format: bulkFormat,
+                    payment_reference: batchId,
+                }, {
+                    type: "bulk",
+                    packageName: selectedPkg.name,
+                    duration: selectedPkg.duration,
+                    price: bulkPrice,
+                    batchId,
+                    wifiName: selectedRouter?.name,
+                });
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Failed to queue voucher batch.");
+            }
         }
     };
 
@@ -649,19 +612,6 @@ export default function VouchersIndex() {
                         <p className="text-sm text-muted-foreground mt-1">
                             Generate, print, and track hotspot access vouchers in bulk or single format.
                         </p>
-                        <div className="mt-3 flex max-w-sm items-center gap-2">
-                            <Router className="h-4 w-4 text-muted-foreground" />
-                            <Select value={selectedRouterId} onValueChange={setSelectedRouterId} disabled={routersLoading}>
-                                <SelectTrigger className="h-9 text-xs">
-                                    <SelectValue placeholder={routersLoading ? "Loading routers..." : "Select router"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {routers.map((router) => (
-                                        <SelectItem key={router.id} value={router.id}>{router.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                             {selectedRouter ? `${availablePackages.length} saved packages available for ${selectedRouter.name}` : "Select a router to load packages."}
                         </p>
@@ -669,38 +619,38 @@ export default function VouchersIndex() {
 
                     <div className="flex items-center gap-2">
                         <Button
-                            variant="outline"
+                            variant="destructive"
                             size="sm"
                             onClick={handleVerifyAllVouchers}
                             disabled={!selectedRouterId || fetchRouterVouchers.isPending}
                             className="gap-2 text-xs font-semibold h-9"
                             title="Verify all database vouchers against the selected MikroTik router"
                         >
-                            {fetchRouterVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 text-primary" />}
+                            {fetchRouterVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                             Verify All
                         </Button>
                         <Button
-                            variant="outline"
+                            variant="destructive"
                             size="sm"
                             onClick={handleSyncToRouter}
                             disabled={!selectedRouterId || syncRouterVouchers.isPending}
                             className="gap-2 text-xs font-semibold h-9"
                             title="Push database vouchers to the selected router"
                         >
-                            {syncRouterVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4 text-primary" />}
+                            {syncRouterVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
                             Sync Router
                         </Button>
+                        <Select value={selectedRouterId} onValueChange={setSelectedRouterId} disabled={routersLoading}>
+                            <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder={routersLoading ? "Loading routers..." : "Select router"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {routers.map((router) => (
+                                    <SelectItem key={router.id} value={router.id}>{router.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={downloadPdf}
-                            className="gap-2 text-xs font-semibold h-9"
-                        >
-                            <Download className="w-4 h-4 text-primary" />
-                            Download PDF
-                        </Button>
-                        <Button
-                            variant="outline"
                             size="sm"
                             onClick={() => {
                                 const toPrint = getVouchersToPrint();
@@ -712,7 +662,7 @@ export default function VouchersIndex() {
                             }}
                             className="gap-2 text-xs font-semibold h-9"
                         >
-                            <Printer className="w-4 h-4 text-primary" />
+                            <Printer className="w-4 h-4" />
                             Print Preview ({selectedVouchers.length > 0 ? selectedVouchers.length : filteredVouchers.length})
                         </Button>
                     </div>
@@ -720,124 +670,45 @@ export default function VouchersIndex() {
 
                 {/* Navigation Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                    <TabsList className="bg-muted p-1 border border-border/30 rounded">
-                        <TabsTrigger value="generator" className="gap-2 text-xs font-medium px-4 py-2 rounded active:bg-primary">
+                    <TabsList className="bg-white p-1 border border-primary rounded">
+                        <TabsTrigger
+                            value="generator"
+                            className="gap-2 text-xs font-medium px-4 py-2 rounded transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
                             <Sparkles className="w-3.5 h-3.5" />
                             Voucher Generator
                         </TabsTrigger>
-                        <TabsTrigger value="registry" className="gap-2 text-xs font-medium px-4 py-2 rounded active:bg-primary">
-                            <Barcode className="w-3.5 h-3.5" />
-                            Active Registry ({vouchersLoading ? "..." : `${vouchers.filter((voucher) => voucher.type === "Single").length} singles / ${new Set(vouchers.filter((voucher) => voucher.batchId).map((voucher) => voucher.batchId)).size} batches`})
-                        </TabsTrigger>
-                        <TabsTrigger value="active-users" className="gap-2 text-xs font-medium px-4 py-2 rounded active:bg-primary">
+
+                        <TabsTrigger
+                            value="batches"
+                            className="gap-2 text-sm font-medium px-4 py-2 rounded transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
                             <Users className="w-3.5 h-3.5" />
-                            Active Users ({activeUsersLoading ? "..." : activeUsers.length})
+                            Bulk Batches ({vouchersLoading ? "..." : `${voucherBatches.length}`})
+                        </TabsTrigger>
+
+                        <TabsTrigger
+                            value="singles"
+                            className="gap-2 text-xs font-medium px-4 py-2 rounded transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
+                            <Ticket className="w-3.5 h-3.5" />
+                            Individual Vouchers ({vouchersLoading ? "..." : `${filteredSingleVouchers.length}`})
                         </TabsTrigger>
                     </TabsList>
 
+
                     {/* TAB 1: GENERATORS */}
                     <TabsContent value="generator" className="space-y-6 outline-none">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                            {/* Form 1: Single Voucher */}
-                            <Card className="bg-card border border-border/20 rounded shadow-[0_4px_20px_hsl(var(--primary)/0.02)] flex flex-col justify-between">
-                                <CardHeader>
-                                    <CardTitle className="text-base font-bold flex items-center gap-2">
-                                        Single Voucher Generation
-                                    </CardTitle>
-                                    <CardDescription className="text-xs">
-                                        Create a single access voucher linked to a customer's phone number.
-                                    </CardDescription>
-                                </CardHeader>
-                                <form onSubmit={handleCreateSingle}>
-                                    <CardContent className="space-y-4">
-                                        {/* Phone Number Field */}
-                                        <div className="space-y-2">
-                                            <Label htmlFor="single-phone" className="text-xs font-semibold">
-                                                Customer Phone Number <span className="text-destructive">*</span>
-                                            </Label>
-                                            <div className="relative">
-                                                <Input
-                                                    id="single-phone"
-                                                    placeholder="e.g. +256 701 234567"
-                                                    value={singlePhone}
-                                                    onChange={(e) => {
-                                                        setSinglePhone(e.target.value);
-                                                        if (singlePhoneError) validatePhone(e.target.value);
-                                                    }}
-                                                    onBlur={() => validatePhone(singlePhone)}
-                                                    className={cn("pl-9 h-10 text-sm", singlePhoneError ? "border-destructive focus-visible:ring-destructive" : "")}
-                                                />
-                                                <Phone className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                                            </div>
-                                            {singlePhoneError ? (
-                                                <p className="text-[11px] text-destructive font-medium">{singlePhoneError}</p>
-                                            ) : (
-                                                <p className="text-[11px] text-muted-foreground font-medium">Used for logging and SMS delivery.</p>
-                                            )}
-                                        </div>
-
-                                        {/* Internet Package Selector */}
-                                        <div className="space-y-2">
-                                            <Label htmlFor="single-package" className="text-xs font-semibold">
-                                                Internet Package
-                                            </Label>
-                                            <Select value={singlePackageId} onValueChange={setSinglePackageId}>
-                                                <SelectTrigger className="h-10 text-sm">
-                                                    <SelectValue placeholder="Select Package" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                            {availablePackages.map(pkg => (
-                                                <SelectItem key={pkg.id} value={pkg.id}>
-                                                    {pkg.name} ({pkg.duration})
-                                                </SelectItem>
-                                            ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                                                {availablePackages.find(p => p.id === singlePackageId)?.description}
-                                            </p>
-                                        </div>
-
-                                        {/* Price Override Field */}
-                                        <div className="space-y-2">
-                                            <Label htmlFor="single-price" className="text-xs font-semibold">
-                                                Price (UGX)
-                                            </Label>
-                                            <div className="relative">
-                                                <Input
-                                                    id="single-price"
-                                                    type="number"
-                                                    value={singlePrice}
-                                                    onChange={(e) => setSinglePrice(Number(e.target.value))}
-                                                    className="pl-9 h-10 text-sm"
-                                                />
-                                                <Coins className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                                            </div>
-                                        </div>
-                                    </CardContent>
-
-                                    <CardFooter className="pt-2 border-t border-border/20 mt-4 flex items-center justify-between">
-                                        <div className="text-xs text-muted-foreground">
-                                            Will create <span className="font-bold text-foreground">1 voucher</span>
-                                        </div>
-                                        <Button type="submit" size="sm" className="gap-1.5 text-xs font-semibold" disabled={queueVouchersMutation.isPending || !!voucherJobId || packagesLoading}>
-                                            {queueVouchersMutation.isPending || voucherJobId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                                            Generate Voucher
-                                        </Button>
-                                    </CardFooter>
-                                </form>
-                            </Card>
-
-                            {/* Form 2: Bulk Voucher Generation */}
-                            <Card className="bg-card border border-border/20 rounded shadow-[0_4px_20px_hsl(var(--primary)/0.02)] flex flex-col justify-between">
+                        <div className="max-w-full mx-auto">
+                            {/* Unified Voucher Generator */}
+                            <Card className="bg-card border border-border/50 rounded shadow-[0_4px_20px_hsl(var(--primary)/0.02)] flex flex-col justify-between">
                                 <CardHeader>
                                     <CardTitle className="text-base font-bold flex items-center gap-2">
                                         <Sliders className="w-4 h-4 text-primary" />
-                                        Bulk Batch Generation
+                                        Voucher Generator
                                     </CardTitle>
                                     <CardDescription className="text-xs">
-                                        Generate high volumes of vouchers with custom prefix, digit styles and constraints.
+                                        Generate access vouchers in bulk or as a single code.
                                     </CardDescription>
                                 </CardHeader>
                                 <form onSubmit={handleCreateBulk}>
@@ -846,7 +717,7 @@ export default function VouchersIndex() {
                                             {/* Quantity */}
                                             <div className="space-y-2">
                                                 <Label htmlFor="bulk-qty" className="text-xs font-semibold">
-                                                    Batch Size (Quantity)
+                                                    Quantity (Batch Size)
                                                 </Label>
                                                 <div className="relative">
                                                     <Input
@@ -878,6 +749,35 @@ export default function VouchersIndex() {
                                                 <p className="text-[10px] text-muted-foreground mt-0.5">Optional. Leave blank for codes like AA9FCS.</p>
                                             </div>
                                         </div>
+
+                                        {/* Phone Number Field - Required and Visible only when Quantity is 1 */}
+                                        {bulkQuantity === 1 && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="bulk-phone" className="text-xs font-semibold">
+                                                    Customer Phone Number <span className="text-destructive">*</span>
+                                                </Label>
+                                                <div className="relative">
+                                                    <Input
+                                                        id="bulk-phone"
+                                                        placeholder="e.g. +256 701 234567"
+                                                        value={bulkPhone}
+                                                        onChange={(e) => {
+                                                            setBulkPhone(e.target.value);
+                                                            if (bulkPhoneError) validateBulkPhone(e.target.value);
+                                                        }}
+                                                        onBlur={() => validateBulkPhone(bulkPhone)}
+                                                        className={cn("pl-9 h-10 text-sm", bulkPhoneError ? "border-destructive focus-visible:ring-destructive" : "")}
+                                                        required
+                                                    />
+                                                    <Phone className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                                                </div>
+                                                {bulkPhoneError ? (
+                                                    <p className="text-[11px] text-destructive font-medium">{bulkPhoneError}</p>
+                                                ) : (
+                                                    <p className="text-[11px] text-muted-foreground font-medium">Used for logging and SMS delivery.</p>
+                                                )}
+                                            </div>
+                                        )}
 
                                         <div className="grid grid-cols-2 gap-4">
                                             {/* Character Set Choice */}
@@ -958,30 +858,91 @@ export default function VouchersIndex() {
 
                                     <CardFooter className="pt-2 border-t border-border/20 mt-4 flex items-center justify-between">
                                         <div className="text-xs text-muted-foreground">
-                                            Total Batch Value: <span className="font-bold text-foreground">UGX {(bulkPrice * bulkQuantity).toLocaleString()}</span>
+                                            {bulkQuantity === 1 ? "Single voucher creation" : `Total Batch Value: UGX ${(bulkPrice * bulkQuantity).toLocaleString()}`}
                                         </div>
-                                        <Button type="submit" size="sm" className="gap-1.5 text-xs font-semibold" disabled={queueVouchersMutation.isPending || !!voucherJobId || packagesLoading}>
+                                        <Button type="submit" size="sm" className="h-10 gap-1.5 text-xs font-semibold" disabled={queueVouchersMutation.isPending || !!voucherJobId || packagesLoading}>
                                             {queueVouchersMutation.isPending || voucherJobId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />}
-                                            Generate {bulkQuantity} Vouchers
+                                            {bulkQuantity === 1 ? "Generate Voucher" : `Generate ${bulkQuantity} Vouchers`}
                                         </Button>
                                     </CardFooter>
                                 </form>
                             </Card>
-
                         </div>
                     </TabsContent>
 
-                    {/* TAB 2: ACTIVE REGISTRY */}
-                    <TabsContent value="registry" className="space-y-4 outline-none">
-
+                    {/* TAB 2: BULK BATCHES */}
+                    <TabsContent value="batches" className="space-y-4 outline-none">
                         {/* Filter controls */}
                         <div className="p-1 rounded flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
-
                                 {/* Search Bar */}
                                 <div className="relative flex-1">
                                     <Input
-                                        placeholder="Search by Code, Phone or Batch ID..."
+                                        placeholder="Search by Batch ID or Router..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-9 h-9 text-xs"
+                                    />
+                                    <Search className="absolute left-3 top-3 w-3.5 h-3.5 text-muted-foreground" />
+                                    {searchQuery && (
+                                        <button
+                                            onClick={() => setSearchQuery("")}
+                                            className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Package Filter */}
+                                <div className="w-full sm:w-[160px]">
+                                    <Select value={filterPackage} onValueChange={setFilterPackage}>
+                                        <SelectTrigger className="h-9 text-xs">
+                                            <SelectValue placeholder="All Packages" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Packages</SelectItem>
+                                            {availablePackages.map(p => (
+                                                <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Status Filter */}
+                                <div className="w-full sm:w-[130px]">
+                                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                        <SelectTrigger className="h-9 text-xs">
+                                            <SelectValue placeholder="All Statuses" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Statuses</SelectItem>
+                                            <SelectItem value="Active">Active</SelectItem>
+                                            <SelectItem value="Unactivated">Unactivated</SelectItem>
+                                            <SelectItem value="Expired">Expired</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <BulkBatchesTable
+                            batches={voucherBatches}
+                            deletingBatch={deleteBatchMutation.isPending}
+                            onDownloadBatch={downloadBatchPdf}
+                            onDeleteBatch={handleDeleteBatch}
+                        />
+                    </TabsContent>
+
+                    {/* TAB 3: INDIVIDUAL VOUCHERS */}
+                    <TabsContent value="singles" className="space-y-4 outline-none">
+                        {/* Filter controls */}
+                        <div className="p-1 rounded flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+                                {/* Search Bar */}
+                                <div className="relative flex-1">
+                                    <Input
+                                        placeholder="Search by Code, Phone or Router..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         className="pl-9 h-9 text-xs"
@@ -1059,100 +1020,19 @@ export default function VouchersIndex() {
                             )}
                         </div>
 
-                        <VoucherRegistryTables
+                        <IndividualVouchersTable
                             singles={filteredSingleVouchers}
-                            batches={voucherBatches}
                             selected={selectedVouchers}
                             deletingVoucher={deleteVoucherMutation.isPending}
-                            deletingBatch={deleteBatchMutation.isPending}
                             onSelectAll={handleSelectAll}
                             onSelect={handleSelectVoucher}
                             onCopy={copyCode}
-                            onDownloadBatch={downloadBatchPdf}
                             onDeleteVoucher={handleDeleteVoucher}
-                            onDeleteBatch={handleDeleteBatch}
                             getStatusClass={getStatusBadge}
                         />
-
                     </TabsContent>
 
-                    {/* TAB 3: ACTIVE USERS */}
-                    <TabsContent value="active-users" className="space-y-4 outline-none">
-                        <Card className="border border-border/40 shadow-sm bg-card">
-                            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle className="text-sm font-bold tracking-tight text-foreground flex items-center gap-1.5">
-                                        <Activity className="w-4 h-4 text-primary animate-pulse" />
-                                        Active Hotspot Sessions
-                                    </CardTitle>
-                                    <CardDescription className="text-xs text-muted-foreground">
-                                        Devices currently connected via vouchers, across every router in this branch.
-                                    </CardDescription>
-                                </div>
-                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold">
-                                    {activeUsersLoading ? "..." : `${activeUsers.length} Online`}
-                                </Badge>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="overflow-x-auto border border-border/20 rounded-md">
-                                    <Table>
-                                        <TableHeader className="bg-muted/30">
-                                            <TableRow>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground">Router</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground">Device/IP</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground">MAC Address</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground">Voucher Code</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground">TX / RX</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase text-foreground text-right">Uptime</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {activeUsersLoading ? (
-                                                <TableRow>
-                                                    <TableCell colSpan={6} className="h-44 text-center">
-                                                        <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                                            <Loader2 className="w-6 h-6 mb-2 animate-spin" />
-                                                            <span className="text-sm font-semibold">Loading active sessions...</span>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ) : activeUsers.length === 0 ? (
-                                                <TableRow>
-                                                    <TableCell colSpan={6} className="h-44 text-center">
-                                                        <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                                            <WifiOff className="w-10 h-10 mb-2 stroke-[1.5] text-muted-foreground/60" />
-                                                            <span className="text-sm font-semibold">No active sessions</span>
-                                                            <span className="text-xs mt-0.5">Connected hotspot clients will appear here in real time.</span>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ) : (
-                                                activeUsers.map((session) => (
-                                                    <TableRow key={session.id} className="hover:bg-muted/40 transition-colors">
-                                                        <TableCell className="text-xs font-semibold text-foreground">{session.routerName}</TableCell>
-                                                        <TableCell>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-foreground">{session.device}</span>
-                                                                <span className="text-[10px] font-mono text-muted-foreground">{session.ip}</span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="font-mono text-xs font-medium text-muted-foreground">{session.mac}</TableCell>
-                                                        <TableCell className="font-mono text-xs font-semibold text-primary">{session.user}</TableCell>
-                                                        <TableCell className="text-xs text-foreground/80">
-                                                            <span className="font-bold text-emerald-500">↑ {session.uploaded}</span>
-                                                            <span className="text-muted-foreground mx-1">/</span>
-                                                            <span className="font-bold text-blue-500">↓ {session.downloaded}</span>
-                                                        </TableCell>
-                                                        <TableCell className="text-right text-xs font-mono text-muted-foreground">{session.uptime}</TableCell>
-                                                    </TableRow>
-                                                ))
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
+
                 </Tabs>
             </main>
 

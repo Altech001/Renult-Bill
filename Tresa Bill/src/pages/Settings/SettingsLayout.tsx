@@ -2,13 +2,11 @@ import AppHeader from "@/components/Header/AppHeader";
 import SEO from "@/components/SEO";
 import {
   Bell,
-  Building2,
   CreditCard,
   Key,
   Megaphone,
-  User,
-  Wallet,
   ScrollText,
+  User
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -31,37 +29,37 @@ const navItems: SettingsNavItem[] = [
   },
   {
     id: "my-details",
-    label: "My Profile",
+    label: "Profile & Details",
     icon: <User className="w-4 h-4" />,
     path: "/settings",
   },
   {
     id: "password",
-    label: "Password",
+    label: "Change Password",
     icon: <Key className="w-4 h-4" />,
     path: "/settings/password",
   },
-  {
-    id: "wallet-mgmt",
-    label: "Wallet Mgmt",
-    icon: <Wallet className="w-4 h-4" />,
-    path: "/settings/wallet",
-  },
+  // {
+  //   id: "wallet-mgmt",
+  //   label: "Wallet Mgmt",
+  //   icon: <Wallet className="w-4 h-4" />,
+  //   path: "/settings/wallet",
+  // },
   {
     id: "billing",
-    label: "Transactions",
+    label: "Recent Transactions",
     icon: <CreditCard className="w-4 h-4" />,
     path: "/settings/billing",
   },
   {
     id: "notifications",
-    label: "Notifications",
+    label: "View Notifications",
     icon: <Bell className="w-4 h-4" />,
     path: "/settings/notifications",
   },
   {
     id: "campaigns",
-    label: "Campaigns",
+    label: "Tickets & Campaigns",
     icon: <Megaphone className="w-4 h-4" />,
     path: "/campaigns",
   },

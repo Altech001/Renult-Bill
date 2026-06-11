@@ -352,7 +352,7 @@ export default function RoutersIndex() {
 
                             {/* Metrics & Action buttons */}
                             <div className="flex flex-wrap items-center gap-3">
-                                <Button
+                                {/* <Button
                                     onClick={() => navigate('/router/packages')}
                                     variant="outline"
                                     size="sm"
@@ -360,12 +360,21 @@ export default function RoutersIndex() {
                                 >
                                     <PackagePlus className="w-4 h-4" />
                                     Create & Manage Packages
+                                </Button> */}
+                                <Button
+                                    onClick={() => navigate('/router/setup')}
+                                    size="sm"
+                                    className="gap-1.5 text-xs font-semibold h-10 px-3 bg-primary text-primary-foreground hover:bg-primary/95 shadow-sm"
+                                >
+                                    <Wifi className="w-4 h-4" />
+                                    Provision Router
                                 </Button>
-	                                <Button
-	                                    onClick={() => navigate('/router/configure')}
-	                                    size="sm"
-	                                    className="gap-1.5 text-xs font-semibold h-10 px-3"
-	                                >
+                                <Button
+                                    onClick={() => navigate('/router/configure')}
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1.5 text-xs font-semibold h-10 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm"
+                                >
                                     <Link className="w-4 h-4" />
                                     Connect New Router
                                 </Button>
@@ -935,7 +944,7 @@ function RouterCard({
     return (
         <Card
             onClick={() => onSelect(router.id)}
-            className={cn("border shadow-sm cursor-pointer transition-all duration-200 rounded flex flex-col justify-between", isOnline ? "border-emerald-400":(status === 'Connecting') ? "border-amber-50 " : "border-rose-500")}
+            className={cn("border shadow-sm cursor-pointer transition-all duration-200 rounded flex flex-col justify-between", isOnline ? "border-emerald-400" : (status === 'Connecting') ? "border-amber-50 " : "border-rose-500")}
         >
             <div className="p-4 space-y-3">
                 {/* Details Header */}
@@ -997,7 +1006,7 @@ function RouterCard({
             </div>
 
             {/* Action Bar */}
-            <div className={cn("border-t border-border/50 px-4 py-2 flex items-center justify-between text-[10px] rounded-b", isOnline ? "bg-emerald-500": (status === 'Connecting') ? "bg-amber-500" :" bg-rose-500")}>
+            <div className={cn("border-t border-border/50 px-4 py-2 flex items-center justify-between text-[10px] rounded-b", isOnline ? "bg-emerald-500" : (status === 'Connecting') ? "bg-amber-500" : " bg-rose-500")}>
                 <span className="text-white font-bold hover:underline">View Details &rarr;</span>
                 <div className="flex items-center gap-1">
                     <Button

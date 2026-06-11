@@ -110,7 +110,9 @@ def generate_config_commands(
     """
     cmds: list[dict[str, Any]] = []
     ethernet_ports = hardware.get("ethernet_ports", [])
+    wireless_interfaces = hardware.get("wireless_interfaces", [])
     has_wireless = hardware.get("has_wireless", False)
+    wlan_name = wireless_interfaces[0].get("name", "wlan1") if wireless_interfaces else "wlan1"
 
     wan_idx = config.wan_interface_index  # 1-based
     mgmt_idx = config.mgmt_interface_index  # 1-based or None
@@ -179,13 +181,13 @@ def generate_config_commands(
             "params": {"bridge": "bridge_hotspot", "interface": hp, "hw": "yes"},
         })
 
-    if has_wireless:
+    if has_wireless and config.wifi_enabled:
         cmds.append({
-            "step": "Add wlan1 to bridge_hotspot",
+            "step": f"Add {wlan_name} to bridge_hotspot",
             "path": "/interface/bridge/port",
             "action": "add",
-            "find": {"interface": "wlan1"},
-            "params": {"bridge": "bridge_hotspot", "interface": "wlan1", "hw": "yes"},
+            "find": {"interface": wlan_name},
+            "params": {"bridge": "bridge_hotspot", "interface": wlan_name, "hw": "yes"},
         })
 
     # ── 3. IP addressing ────────────────────────────────────
@@ -213,64 +215,104 @@ def generate_config_commands(
         "find": {"name": "pppoe_pool"},
         "params": {"name": "pppoe_pool", "ranges": pool_range},
     })
-    cmds.append({
-        "step": "Create hotspot_pool",
-        "path": "/ip/pool",
-        "action": "add",
-        "find": {"name": "hotspot_pool"},
-        "params": {"name": "hotspot_pool", "ranges": pool_range},
-    })
 
-    # ── 5. DHCP + Hotspot server ─────────────────────────────
-    cmds.append({
-        "step": "Create hotspot DHCP network",
-        "path": "/ip/dhcp-server/network",
-        "action": "add",
-        "find": {"address": hotspot_network},
-        "params": {
-            "address": hotspot_network,
-            "gateway": config.bridge_ip,
-            "dns-server": config.dns_servers,
-        },
-    })
-    cmds.append({
-        "step": "Create hotspot DHCP server",
-        "path": "/ip/dhcp-server",
-        "action": "add",
-        "find": {"name": "dhcp_hotspot"},
-        "params": {
-            "name": "dhcp_hotspot",
-            "interface": "bridge_hotspot",
-            "address-pool": "hotspot_pool",
-            "lease-time": "1h",
-            "disabled": "no",
-        },
-    })
-    cmds.append({
-        "step": "Create hotspot server profile",
-        "path": "/ip/hotspot/profile",
-        "action": "add",
-        "find": {"name": "hotspot_profile"},
-        "params": {
-            "name": "hotspot_profile",
-            "hotspot-address": config.bridge_ip,
-            "dns-name": "wifi.renult.local",
-            "login-by": "http-chap,http-pap",
-        },
-    })
-    cmds.append({
-        "step": "Create hotspot server on bridge_hotspot",
-        "path": "/ip/hotspot",
-        "action": "add",
-        "find": {"name": "hotspot1"},
-        "params": {
-            "name": "hotspot1",
-            "interface": "bridge_hotspot",
-            "address-pool": "hotspot_pool",
-            "profile": "hotspot_profile",
-            "disabled": "no",
-        },
-    })
+    if config.enable_hotspot:
+        cmds.append({
+            "step": "Create hotspot_pool",
+            "path": "/ip/pool",
+            "action": "add",
+            "find": {"name": "hotspot_pool"},
+            "params": {"name": "hotspot_pool", "ranges": pool_range},
+        })
+
+        # ── 5. DHCP + Hotspot server ─────────────────────────
+        cmds.append({
+            "step": "Create hotspot DHCP network",
+            "path": "/ip/dhcp-server/network",
+            "action": "add",
+            "find": {"address": hotspot_network},
+            "params": {
+                "address": hotspot_network,
+                "gateway": config.bridge_ip,
+                "dns-server": config.dns_servers,
+            },
+        })
+        cmds.append({
+            "step": "Create hotspot DHCP server",
+            "path": "/ip/dhcp-server",
+            "action": "add",
+            "find": {"name": "dhcp_hotspot"},
+            "params": {
+                "name": "dhcp_hotspot",
+                "interface": "bridge_hotspot",
+                "address-pool": "hotspot_pool",
+                "lease-time": "1h",
+                "disabled": "no",
+            },
+        })
+        cmds.append({
+            "step": "Create hotspot server profile",
+            "path": "/ip/hotspot/profile",
+            "action": "add",
+            "find": {"name": "hotspot_profile"},
+            "params": {
+                "name": "hotspot_profile",
+                "hotspot-address": config.bridge_ip,
+                "dns-name": config.hotspot_dns_name or "wifi.renult.local",
+                "login-by": "http-chap,http-pap",
+            },
+        })
+        cmds.append({
+            "step": "Create hotspot server on bridge_hotspot",
+            "path": "/ip/hotspot",
+            "action": "add",
+            "find": {"name": "hotspot1"},
+            "params": {
+                "name": "hotspot1",
+                "interface": "bridge_hotspot",
+                "address-pool": "hotspot_pool",
+                "profile": "hotspot_profile",
+                "disabled": "no",
+            },
+        })
+
+        # ── Anti-sharing: mangle rules + one device per voucher ──
+        if config.enable_anti_sharing:
+            cmds.append({
+                "step": "Limit hotspot vouchers to one device each",
+                "path": "/ip/hotspot/user/profile",
+                "action": "set",
+                "find": {"name": "default"},
+                "params": {"shared-users": "1"},
+            })
+            cmds.append({
+                "step": "Add mangle rule marking hotspot connections",
+                "path": "/ip/firewall/mangle",
+                "action": "add",
+                "find": {"comment": "Tresa: anti-sharing connection mark"},
+                "params": {
+                    "chain": "prerouting",
+                    "in-interface": "bridge_hotspot",
+                    "action": "mark-connection",
+                    "new-connection-mark": "hotspot-conn",
+                    "passthrough": "yes",
+                    "comment": "Tresa: anti-sharing connection mark",
+                },
+            })
+            cmds.append({
+                "step": "Add mangle rule marking hotspot packets",
+                "path": "/ip/firewall/mangle",
+                "action": "add",
+                "find": {"comment": "Tresa: anti-sharing packet mark"},
+                "params": {
+                    "chain": "prerouting",
+                    "connection-mark": "hotspot-conn",
+                    "action": "mark-packet",
+                    "new-packet-mark": "hotspot-packet",
+                    "passthrough": "no",
+                    "comment": "Tresa: anti-sharing packet mark",
+                },
+            })
 
     # ── 6. PPP profile ──────────────────────────────────────
     cmds.append({
@@ -286,36 +328,36 @@ def generate_config_commands(
         },
     })
 
-    # ── 7. PPP secrets ──────────────────────────────────────
-    for user in config.pppoe_users:
+    # ── 7. PPP secrets + 8. PPPoE server ────────────────────
+    if config.enable_pppoe_server:
+        for user in config.pppoe_users:
+            cmds.append({
+                "step": f"Create PPP secret '{user.username}'",
+                "path": "/ppp/secret",
+                "action": "add",
+                "find": {"name": user.username},
+                "params": {
+                    "name": user.username,
+                    "password": user.password,
+                    "service": "pppoe",
+                    "profile": user.profile,
+                },
+            })
+
         cmds.append({
-            "step": f"Create PPP secret '{user.username}'",
-            "path": "/ppp/secret",
+            "step": f"Create PPPoE server '{config.pppoe_service_name}' on bridge_hotspot",
+            "path": "/interface/pppoe-server/server",
             "action": "add",
-            "find": {"name": user.username},
+            "find": {"service-name": config.pppoe_service_name, "interface": "bridge_hotspot"},
             "params": {
-                "name": user.username,
-                "password": user.password,
-                "service": "pppoe",
-                "profile": user.profile,
+                "service-name": config.pppoe_service_name,
+                "interface": "bridge_hotspot",
+                "authentication": "pap,chap,mschap1,mschap2",
+                "keepalive-timeout": "10",
+                "one-session-per-host": "yes",
+                "default-profile": config.pppoe_profile_name,
             },
         })
-
-    # ── 8. PPPoE server ─────────────────────────────────────
-    cmds.append({
-        "step": f"Create PPPoE server '{config.pppoe_service_name}' on bridge_hotspot",
-        "path": "/interface/pppoe-server/server",
-        "action": "add",
-        "find": {"service-name": config.pppoe_service_name, "interface": "bridge_hotspot"},
-        "params": {
-            "service-name": config.pppoe_service_name,
-            "interface": "bridge_hotspot",
-            "authentication": "pap,chap,mschap1,mschap2",
-            "keepalive-timeout": "10",
-            "one-session-per-host": "yes",
-            "default-profile": config.pppoe_profile_name,
-        },
-    })
 
     # ── 9. PPPoE client (upstream ISP) ──────────────────────
     if config.enable_pppoe_client:
@@ -369,6 +411,20 @@ def generate_config_commands(
             "allow-remote-requests": "yes",
         },
     })
+
+    # ── 12. WiFi SSID ────────────────────────────────────────
+    if has_wireless and config.wifi_enabled and config.wifi_ssid:
+        cmds.append({
+            "step": f"Set WiFi SSID to '{config.wifi_ssid}' on {wlan_name}",
+            "path": "/interface/wireless",
+            "action": "set",
+            "find": {"name": wlan_name},
+            "params": {
+                "ssid": config.wifi_ssid,
+                "mode": "ap-bridge",
+                "disabled": "no",
+            },
+        })
 
     return cmds
 

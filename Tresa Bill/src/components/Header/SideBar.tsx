@@ -11,7 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { MikrotikIcon, MoneyIcon, SettingsIcon, VoucherIcon, WithdrawIcon } from "@/constants/Icons";
+import { HelpDeskIcon, MikrotikIcon, MoneyIcon, SettingsIcon, VoucherIcon, WithdrawIcon } from "@/constants/Icons";
 import { useAuth } from "@/lib/auth";
 import {
   Check,
@@ -73,8 +73,8 @@ const primaryNavItems: NavItem[] = [
     path: "/vouchers",
     submenu: [
       { label: "Vouchers", path: "/vouchers", icon: <Ticket className="w-4 h-4" /> },
-      { label: "Packages", path: "/router/packages", icon: <Package className="w-4 h-4" /> },
-      { label: "Active Users", path: "/vouchers?tab=active-users", icon: <Users className="w-4 h-4" /> },
+      { label: "Packages", path: "/packages", icon: <Package className="w-4 h-4" /> },
+      { label: "Active Users", path: "/vouchers/active-users", icon: <Users className="w-4 h-4" /> },
     ],
   },
   {
@@ -91,8 +91,8 @@ const supportNavItems: NavItem[] = [
     path: "/withdrawals",
   },
   {
-    label: "Support",
-    icon: <PhoneForwardedIcon className="w-5 h-5" />,
+    label: "Help Desk",
+    icon: <HelpDeskIcon className="w-5 h-5 " />,
     path: "/voucher-support",
   },
   {
@@ -136,6 +136,7 @@ const PERMISSION_BY_PATH: Record<string, string> = {
   "/router/packages": "routers",
   "/sales": "sales",
   "/vouchers": "vouchers",
+  "/vouchers/active-users": "vouchers",
   "/voucher-support": "support",
   "/messages": "support",
   "/network": "network",
@@ -418,15 +419,15 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
       return (
         <div key={item.label}>
           {buttonContent}
-          <div className="mt-0.5 ml-[34px] pl-3 border-l border-border/40 space-y-0.5">
+          <div className="mt-0.5 ml-[34px] pl-3 space-y-0.5">
             {submenu!.map((sub) => {
               const subItemActive = isSubActive(sub.path);
               return (
                 <button
                   key={sub.label}
                   onClick={() => handleNavigate(sub.path)}
-                  className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-xs font-medium transition-colors ${subItemActive
-                    ? "bg-primary/10 text-primary font-semibold"
+                  className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-sm font-medium transition-colors ${subItemActive
+                    ? "text-primary font-semibold border-l-[3px] border-l-primary rounded-none"
                     : "text-foreground/70 hover:bg-muted/60"
                     }`}
                 >
@@ -515,9 +516,6 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
               align="start"
               className="w-64 p-2 bg-popover border border-border/60 shadow rounded"
             >
-              <div className="px-2 py-1.5 text-xs font-mono text-muted-foreground">
-                Locations
-              </div>
               <div className="space-y-0.5 my-1">
                 {workspaces.map((workspace) => {
                   const isActive = workspace.id === selectedWorkspace?.id;

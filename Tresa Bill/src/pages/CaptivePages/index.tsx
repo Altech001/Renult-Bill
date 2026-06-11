@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Fireworks } from "fireworks-js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -36,9 +37,10 @@ export default function CaptiveIndex() {
     const [currentStep, setCurrentStep] = useState(0);
 
     const STEPS = [
-        { num: "01", title: "General Info", subtitle: "Name & description" },
-        { num: "02", title: "Branding & Template", subtitle: "Logo, contact & styling" },
-        { num: "03", title: "Preview & Deploy", subtitle: "Verify & push to MikroTik" },
+        { num: "01", title: "Captive Preview", subtitle: "See your portal live" },
+        { num: "02", title: "General Info", subtitle: "Name & description" },
+        { num: "03", title: "Branding & Template", subtitle: "Logo, contact & styling" },
+        { num: "04", title: "Preview & Deploy", subtitle: "Verify & push to MikroTik" },
     ];
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
@@ -54,7 +56,7 @@ export default function CaptiveIndex() {
     const fireworksInstanceRef = useRef<Fireworks | null>(null);
 
     useEffect(() => {
-        if (currentStep === 2 && fireworksRef.current) {
+        if (currentStep === 3 && fireworksRef.current) {
             if (!fireworksInstanceRef.current) {
                 fireworksInstanceRef.current = new Fireworks(fireworksRef.current, {
                     gravity: 1.4,
@@ -93,6 +95,10 @@ export default function CaptiveIndex() {
         }
     }, [routers, selectedRouterId]);
 
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const urlTemplate = searchParams.get("template");
+
     const { data: captivePortalData, isLoading: isLoadingPortal } = useCaptivePortal(selectedRouterId);
     const upsertMutation = useUpsertCaptivePortal(selectedRouterId);
     const pushMutation = usePushCaptivePortal(selectedRouterId);
@@ -107,7 +113,10 @@ export default function CaptiveIndex() {
 
     useEffect(() => {
         if (captivePortalData) {
-            setDraft(captivePortalData);
+            setDraft({
+                ...captivePortalData,
+                portal_template: urlTemplate || captivePortalData.portal_template || "renault"
+            });
         } else if (selectedRouterId) {
             setDraft({
                 title: "Renault WIFI",
@@ -115,10 +124,10 @@ export default function CaptiveIndex() {
                 phone_one: "+256771234567",
                 phone_two: "+256752345678",
                 logo_url: "",
-                portal_template: "renault"
+                portal_template: urlTemplate || "renault"
             });
         }
-    }, [captivePortalData, selectedRouterId]);
+    }, [captivePortalData, selectedRouterId, urlTemplate]);
 
     // Reset deploy state when router changes
     useEffect(() => {
@@ -227,10 +236,21 @@ export default function CaptiveIndex() {
             <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
                 {/* Header Section */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Configure landing pages for Wi-Fi users before granting internet access.
-                        </p>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate("/captive-portals")}
+                            className="p-1.5 hover:bg-muted shrink-0 rounded-full border border-border/40"
+                        >
+                            <ArrowLeft className="w-5 h-5 text-muted-foreground hover:text-foreground" />
+                        </Button>
+                        <div>
+                            <h2 className="text-xl font-extrabold tracking-tight">Captive Portal Builder</h2>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Configure landing pages for Wi-Fi users before granting internet access.
+                            </p>
+                        </div>
                     </div>
                     {/* Router selector */}
                     {routers.length > 0 && (
@@ -314,8 +334,57 @@ export default function CaptiveIndex() {
                         </div>
 
                         <div className="max-w-4xl mx-auto space-y-6">
-                            {/* Step 1: General Info */}
+                            {/* Step 1: Captive Preview */}
                             {currentStep === 0 && (
+                                <Card className="border-border/40 shadow-sm rounded overflow-hidden">
+                                    <CardHeader className="py-4 px-5 border-b border-border/30">
+                                        <CardTitle className="text-sm font-bold flex items-center gap-2">
+                                            <Globe className="w-4 h-4 text-primary" /> Live Portal Preview
+                                        </CardTitle>
+                                        <CardDescription className="text-xs">
+                                            This is exactly what your Wi-Fi users will see when they connect. Proceed to the next steps to customise it.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <div className="relative w-full" style={{ height: "520px" }}>
+                                            <iframe
+                                                key={`${selectedRouterId}-${draft.portal_template}`}
+                                                src={`/captive-portals/preview?template=${draft.portal_template || "renault"}&preview=1`}
+                                                title="Captive Portal Live Preview"
+                                                className="w-full h-full border-0"
+                                                style={{ background: "#fff" }}
+                                                onLoad={(e) => {
+                                                    try {
+                                                        localStorage.setItem("foreform_captive_portal_preview", JSON.stringify({
+                                                            id: draft.id || "preview-id",
+                                                            router_id: selectedRouterId,
+                                                            router_name: routers.find(r => r.id === selectedRouterId)?.name || "Router",
+                                                            title: draft.title,
+                                                            description: draft.description,
+                                                            phone_one: draft.phone_one,
+                                                            phone_two: draft.phone_two,
+                                                            logo_url: draft.logo_url,
+                                                            portal_template: draft.portal_template,
+                                                            last_pushed_at: draft.last_pushed_at
+                                                        }));
+                                                    } catch (_) {}
+                                                }}
+                                            />
+                                        </div>
+                                    </CardContent>
+                                    <div className="px-5 py-3 border-t border-border/30 flex items-center justify-between gap-3 bg-muted/30">
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Template: <strong className="capitalize">{draft.portal_template || "renault"}</strong>
+                                        </span>
+                                        <Button size="sm" className="text-xs gap-1" onClick={() => setCurrentStep(1)}>
+                                            Edit & Customise <ArrowRight className="w-3.5 h-3.5" />
+                                        </Button>
+                                    </div>
+                                </Card>
+                            )}
+
+                            {/* Step 2: General Info */}
+                            {currentStep === 1 && (
                                 <Card className="border-border/0 shadow-none rounded">
                                     <CardContent className="p-5 space-y-4">
                                         <div>
@@ -343,8 +412,8 @@ export default function CaptiveIndex() {
                                 </Card>
                             )}
 
-                            {/* Step 2: Branding & Appearance */}
-                            {currentStep === 1 && (
+                            {/* Step 3: Branding & Appearance */}
+                            {currentStep === 2 && (
                                 <Card className="border-border/0 shadow-none rounded">
                                     <CardHeader className="py-4 px-5 border-b border-border/30">
                                         <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -394,6 +463,10 @@ export default function CaptiveIndex() {
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-popover border border-border">
+                                                    <SelectItem value="classic">Classic (Clean & Professional)</SelectItem>
+                                                    <SelectItem value="modern">Modern (Sleek & Smooth)</SelectItem>
+                                                    <SelectItem value="blue_modern">Blue Modern (Carousel Ads Support)</SelectItem>
+                                                    <SelectItem value="brown_cards">Brown Cards (Warm Earth Tones)</SelectItem>
                                                     <SelectItem value="renault">Renault Custom Portal (UGX Mobile Money & Voucher)</SelectItem>
                                                     <SelectItem value="auroaa">Auroraa RouterOS Portal (Full Hotspot Bundle)</SelectItem>
                                                     <SelectItem value="light">Classic Clean (Light)</SelectItem>
@@ -408,8 +481,8 @@ export default function CaptiveIndex() {
                                 </Card>
                             )}
 
-                            {/* Step 3: Deploy */}
-                            {currentStep === 2 && (
+                            {/* Step 4: Deploy */}
+                            {currentStep === 3 && (
                                 <div className="space-y-4">
                                     {/* Config Summary Card */}
                                     <Card className="border-border/40 rounded shadow-sm">

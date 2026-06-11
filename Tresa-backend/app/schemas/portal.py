@@ -75,3 +75,14 @@ class PushCaptiveResponse(BaseModel):
     updated_profiles: list[str] = Field(default_factory=list)
     error: Optional[str] = None
     diagnostics: dict[str, str] = Field(default_factory=dict)
+
+
+class CaptivePortalDeployResponse(BaseModel):
+    success: bool
+    router_id: UUID
+    router_name: str
+    fetched_files: list[str]
+    deployed_directory: Optional[str] = None
+    updated_profiles: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+    diagnostics: dict[str, str] = Field(default_factory=dict)

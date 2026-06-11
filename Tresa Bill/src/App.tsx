@@ -16,6 +16,7 @@ import SetPassword from './pages/Auth/SetPassword';
 import Signup from './pages/Auth/Signup';
 import CaptiveIndex from './pages/CaptivePages/index';
 import CaptivePreview from './pages/CaptivePages/preview_page';
+import HotspotPages from './pages/CaptivePages/HotspotPages';
 import BranchesPage from './pages/Branches';
 import Dashboard from './pages/Dashboard';
 import MessagesPage from './pages/Messages';
@@ -26,10 +27,12 @@ import ProfilePage from './pages/ProfilePage';
 import ConfigureRouter from './pages/Routers/ConfigureRouter';
 import RouterPackages from './pages/Routers/Packages';
 import RoutersIndex from './pages/Routers/index';
+import SetUpProvison from './pages/SetUpProvision/SetUpProvison';
 import SalesIndex from './pages/Sales/index';
 import Withdrawal from './pages/Sales/Withdrawal';
 import SupportsIndex from './pages/Supports/index';
 import VouchersIndex from './pages/Vouchers/index';
+import ActiveUsersPage from './pages/Vouchers/ActiveUsers';
 import { renultApi } from './api/foreform';
 
 /* ── settings sub-pages ── */
@@ -122,16 +125,19 @@ const AppRoutes = () => {
 
         <Route path="/" element={protectedElement(<Dashboard />)} />
         <Route path="/profile" element={protectedElement(<ProfilePage />)} />
-        <Route path="/captive-portals" element={protectedElement(<PermissionRoute permission="captive"><CaptiveIndex /></PermissionRoute>)} />
+        <Route path="/captive-portals" element={protectedElement(<PermissionRoute permission="captive"><HotspotPages /></PermissionRoute>)} />
+        <Route path="/captive-portals/customize" element={protectedElement(<PermissionRoute permission="captive"><CaptiveIndex /></PermissionRoute>)} />
         <Route path="/captive-portals/preview" element={protectedElement(<PermissionRoute permission="captive"><CaptivePreview /></PermissionRoute>)} />
         <Route path="/network" element={protectedElement(<PermissionRoute permission="network"><Networks /></PermissionRoute>)} />
         <Route path="/voucher-support" element={protectedElement(<PermissionRoute permission="support"><SupportsIndex /></PermissionRoute>)} />
         <Route path="/messages" element={protectedElement(<PermissionRoute permission="support"><MessagesPage /></PermissionRoute>)} />
         <Route path="/sales" element={protectedElement(<PermissionRoute permission="sales"><SalesIndex /></PermissionRoute>)} />
         <Route path="/vouchers" element={protectedElement(<PermissionRoute permission="vouchers"><VouchersIndex /></PermissionRoute>)} />
+        <Route path="/vouchers/active-users" element={protectedElement(<PermissionRoute permission="vouchers"><ActiveUsersPage /></PermissionRoute>)} />
         <Route path="/router" element={protectedElement(<PermissionRoute permission="routers"><RoutersIndex /></PermissionRoute>)} />
         <Route path="/router/configure" element={protectedElement(<PermissionRoute permission="routers"><ConfigureRouter /></PermissionRoute>)} />
-        <Route path="/router/packages" element={protectedElement(<PermissionRoute permission="routers"><RouterPackages /></PermissionRoute>)} />
+        <Route path="/router/setup" element={protectedElement(<PermissionRoute permission="routers"><SetUpProvison /></PermissionRoute>)} />
+        <Route path="/packages" element={protectedElement(<PermissionRoute permission="routers"><RouterPackages /></PermissionRoute>)} />
         <Route path="/withdraw" element={protectedElement(<OwnerRoute><Withdrawal /></OwnerRoute>)} />
         <Route path="/withdrawals" element={protectedElement(<OwnerRoute><Withdrawal /></OwnerRoute>)} />
         <Route path="/remote-access" element={protectedElement(<PermissionRoute permission="network"><RemoteAccess /></PermissionRoute>)} />

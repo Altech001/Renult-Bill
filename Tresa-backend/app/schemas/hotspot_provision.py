@@ -67,6 +67,38 @@ class HotspotProvisionConfig(BaseModel):
     # ── DNS ─────────────────────────────────────────────────
     dns_servers: str = Field(default="8.8.8.8,8.8.4.4", max_length=120)
 
+    # ── Services ─────────────────────────────────────────────
+    enable_hotspot: bool = Field(
+        default=True,
+        description="Whether to set up the captive-portal hotspot server.",
+    )
+    enable_pppoe_server: bool = Field(
+        default=True,
+        description="Whether to set up a PPPoE server for downstream clients.",
+    )
+    hotspot_dns_name: Optional[str] = Field(
+        default=None,
+        max_length=120,
+        description="Portal domain advertised by the hotspot server (e.g. wifi.renult.app).",
+    )
+
+    # ── Anti-sharing (firewall mangle) ──────────────────────
+    enable_anti_sharing: bool = Field(
+        default=False,
+        description="Add firewall mangle rules and limit each voucher to one device.",
+    )
+
+    # ── WiFi ─────────────────────────────────────────────────
+    wifi_enabled: bool = Field(
+        default=True,
+        description="Whether to bridge and configure the router's wireless interface.",
+    )
+    wifi_ssid: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        description="SSID to broadcast on the router's wireless interface.",
+    )
+
 
 # ── Response schemas ─────────────────────────────────────────
 

@@ -161,13 +161,38 @@ export default function RouterPackages() {
 
       <main className="max-w-screen mx-auto px-4 sm:px-6 py-6 space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => navigate("/router")} className="h-9 w-9 rounded-full">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+          <div className="flex justify-between w-full items-center gap-3">
             <div>
               <h1 className="text-lg font-bold">Router Packages</h1>
               <p className="text-xs text-muted-foreground">Configure hotspot packages and view saved router profile metrics.</p>
+            </div>
+
+            <div className="flex gap-1">
+              <Select value={selectedRouterId} onValueChange={setSelectedRouterId} disabled={routersLoading}>
+                <SelectTrigger className="h-10 text-xs">
+                  <SelectValue placeholder={routersLoading ? "Loading routers..." : "Select router"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {routers.map((router) => (
+                    <SelectItem key={router.id} value={router.id}>{router.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={handleSync}
+                size="sm"
+                disabled={syncPackages.isPending}
+                className="gap-1.5 text-xs font-semibold h-10 px-3"
+              >
+                {syncPackages.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Refresh All
+              </Button>
+
+              <Button onClick={() => setIsCreateOpen(true)} disabled={!selectedRouterId} className="gap-2 h-10 text-xs font-semibold">
+                <Plus className="h-4 w-4" />
+                Add Package
+              </Button>
             </div>
           </div>
         </div>
@@ -186,32 +211,6 @@ export default function RouterPackages() {
               <div className="text-xs font-semibold text-muted-foreground">Portal Endpoint</div>
               <div className="mt-2 truncate font-mono text-xs text-primary">{publicPackagesPath}</div>
             </Card>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded border border-border/10 shadow-none">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-              <div className="w-full sm:w-56">
-                <Select value={selectedRouterId} onValueChange={setSelectedRouterId} disabled={routersLoading}>
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder={routersLoading ? "Loading routers..." : "Select router"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {routers.map((router) => (
-                      <SelectItem key={router.id} value={router.id}>{router.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleSync} disabled={!selectedRouterId || syncPackages.isPending} className="gap-2 h-9 text-xs">
-                {syncPackages.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Fetch From Router
-              </Button>
-            </div>
-
-            <Button onClick={() => setIsCreateOpen(true)} disabled={!selectedRouterId} className="gap-2 h-9 text-xs font-semibold">
-              <Plus className="h-4 w-4" />
-              Create Package
-            </Button>
           </div>
 
           {packagesQuery.error ? (
@@ -278,7 +277,7 @@ export default function RouterPackages() {
 
       <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md border-border/40 bg-background overflow-y-auto">
-          <SheetHeader className="pb-6 border-b border-border/40">
+          <SheetHeader className="pb-4">
             <SheetTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
               <PackagePlus className="w-5 h-5 text-primary" />
               Package Setup
@@ -306,7 +305,24 @@ export default function RouterPackages() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-muted-foreground">Limit</Label>
-                <Input value={form.limit} onChange={(event) => updateForm("limit", event.target.value)} placeholder="24hours" className="h-9 text-xs bg-card/40 border-border/60" />
+                <Select value={form.limit} onValueChange={(value) => updateForm("limit", value)}>
+                  <SelectTrigger className="h-9 text-xs bg-card/40 border-border/60">
+                    <SelectValue placeholder="Select limit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1hour">1 Hour</SelectItem>
+                    <SelectItem value="2hours">2 Hours</SelectItem>
+                    <SelectItem value="3hours">3 Hours</SelectItem>
+                    <SelectItem value="6hours">6 Hours</SelectItem>
+                    <SelectItem value="12hours">12 Hours</SelectItem>
+                    <SelectItem value="24hours">24 Hours (1 Day)</SelectItem>
+                    <SelectItem value="2days">2 Days</SelectItem>
+                    <SelectItem value="3days">3 Days</SelectItem>
+                    <SelectItem value="7days">7 Days (1 Week)</SelectItem>
+                    <SelectItem value="14days">14 Days (2 Weeks)</SelectItem>
+                    <SelectItem value="30days">30 Days (1 Month)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-muted-foreground">Devices</Label>

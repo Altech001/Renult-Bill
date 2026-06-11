@@ -340,6 +340,12 @@ export interface HotspotProvisionConfig {
   isp_username?: string | null;
   isp_password?: string | null;
   dns_servers?: string;
+  enable_hotspot?: boolean;
+  enable_pppoe_server?: boolean;
+  hotspot_dns_name?: string | null;
+  enable_anti_sharing?: boolean;
+  wifi_enabled?: boolean;
+  wifi_ssid?: string | null;
 }
 
 export interface HotspotCommandResult {
@@ -395,6 +401,17 @@ export interface PushCaptiveResponse {
   router_id: string;
   router_name: string;
   pushed_files: string[];
+  deployed_directory: string | null;
+  updated_profiles: string[];
+  error: string | null;
+  diagnostics: Record<string, string>;
+}
+
+export interface CaptivePortalDeployResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  fetched_files: string[];
   deployed_directory: string | null;
   updated_profiles: string[];
   error: string | null;
@@ -932,6 +949,10 @@ export const renultApi = {
       apiRequest<PushCaptiveResponse>(`/routers/${routerId}/captive/push`, {
         method: "POST",
         body: JSON.stringify(payload || {}),
+      }),
+    deployR2: (routerId: string) =>
+      apiRequest<CaptivePortalDeployResponse>(`/routers/${routerId}/captive/deploy-r2`, {
+        method: "POST",
       }),
     publicConfig: (routerName: string) =>
       apiRequest<CaptivePortalResponse>(`/portal/${routerName}`, { auth: false }),
