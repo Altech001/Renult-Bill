@@ -26,6 +26,8 @@ export function useBranchWallet(branchId: string, enabled = true) {
     queryKey: ["branchWallet", branchId],
     queryFn: () => renultApi.wallets.getBranchWallet(branchId),
     enabled: !!branchId && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
     retry: 1,
   });
 }

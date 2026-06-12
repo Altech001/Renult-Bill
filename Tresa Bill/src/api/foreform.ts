@@ -598,6 +598,9 @@ export interface BulkMessageResponse {
   sent: number;
   failed: number;
   results: MessageSendResult[];
+  cost_per_sms: number;
+  total_charged: number;
+  wallet_balance: number;
 }
 
 export interface VoucherRouterSyncResponse {

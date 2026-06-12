@@ -35,3 +35,6 @@ class BulkMessageResponse(BaseModel):
     sent: int
     failed: int
     results: list[MessageSendResult]
+    cost_per_sms: int
+    total_charged: int
+    wallet_balance: int

@@ -1,12 +1,19 @@
+import time
 from collections import Counter
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlmodel import col, select
 
 from app.api.deps import CurrentUser
+from app.core.config import settings
 from app.db.session import SessionDep
+from app.models.branch import Branch
+from app.models.branch_wallet import BranchWallet, BranchWalletTransaction
+from app.models.platform_ledger import PlatformLedgerEntry
 from app.models.router import Router
+from app.models.user import User
 from app.models.voucher_purchase import VoucherPurchase
 from app.schemas.messaging import (
     BulkMessageRequest,
@@ -24,6 +31,51 @@ from app.services.messaging import (
 )
 
 router = APIRouter(tags=["Messaging"])
+
+
+def _charge_bulk_sms(session: SessionDep, branch: Branch, user: User, count: int) -> tuple[int, int]:
+    """Debit the branch wallet for `count` accepted SMS. Returns (amount_charged, wallet_balance)."""
+    wallet = session.exec(
+        select(BranchWallet)
+        .where(BranchWallet.branch_id == branch.id)
+        .with_for_update()
+    ).first()
+    if not wallet or count <= 0:
+        return 0, wallet.balance if wallet else 0
+
+    cost_per_sms = settings.sms_notification_cost
+    amount = min(wallet.balance, cost_per_sms * count)
+    if amount > 0:
+        wallet.balance -= amount
+        wallet.total_fees_paid += amount
+        wallet.updated_at = datetime.utcnow()
+        reference = f"SMS-BULK-{branch.id}-{int(time.time())}"
+        session.add(
+            BranchWalletTransaction(
+                wallet_id=wallet.id,
+                branch_id=branch.id,
+                amount=amount,
+                fee_amount=amount,
+                net_amount=0,
+                transaction_type="SMS_NOTIFICATION",
+                reference=reference,
+            )
+        )
+        session.add(
+            PlatformLedgerEntry(
+                branch_wallet_id=wallet.id,
+                branch_id=branch.id,
+                user_id=user.id,
+                amount=amount,
+                fee_type="SMS_NOTIFICATION",
+                source_amount=amount,
+                fee_rate=1,
+                reference=reference,
+            )
+        )
+        session.add(wallet)
+        session.commit()
+    return amount, wallet.balance
 
 
 def branch_vouchers(session: SessionDep, branch_id: UUID) -> list[VoucherPurchase]:
@@ -103,7 +155,7 @@ def send_bulk_message(
     user: CurrentUser,
     session: SessionDep,
 ) -> BulkMessageResponse:
-    require_branch_access(session, branch_id, user, "support")
+    branch, _staff = require_branch_access(session, branch_id, user, "support")
     contacts = contact_map(session, branch_id)
 
     requested_numbers: list[str] = []
@@ -125,6 +177,17 @@ def send_bulk_message(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Voucher messages must include {code} or {}",
+        )
+
+    cost_per_sms = settings.sms_notification_cost
+    wallet = session.exec(select(BranchWallet).where(BranchWallet.branch_id == branch.id)).first()
+    if not wallet or wallet.is_frozen or wallet.balance < cost_per_sms:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient branch wallet balance. Each SMS costs {cost_per_sms} UGX — "
+                "top up the branch wallet to send messages."
+            ),
         )
 
     results: list[MessageSendResult] = []
@@ -178,9 +241,13 @@ def send_bulk_message(
 
     sent = sum(result.success for result in results)
     failed = len(results) - sent
+    total_charged, wallet_balance = _charge_bulk_sms(session, branch, user, sent)
     return BulkMessageResponse(
         success=failed == 0,
         sent=sent,
         failed=failed,
         results=results,
+        cost_per_sms=cost_per_sms,
+        total_charged=total_charged,
+        wallet_balance=wallet_balance,
     )

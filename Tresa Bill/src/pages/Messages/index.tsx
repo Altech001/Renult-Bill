@@ -132,6 +132,13 @@ export default function MessagesPage() {
     enabled: Boolean(branchId),
   });
 
+  const preferencesQuery = useQuery({
+    queryKey: ["notificationPreferences"],
+    queryFn: () => renultApi.monitoring.preferences(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const costPerSms = preferencesQuery.data?.sms_cost_ugx || 0;
+
   const contacts = useMemo(
     () => contactsQuery.data?.contacts || [],
     [contactsQuery.data?.contacts],
@@ -262,8 +269,11 @@ export default function MessagesPage() {
           activity.id === activityId ? { ...activity, status, response } : activity,
         ),
       );
-      if (response.failed) toast.warning(`${response.sent} sent, ${response.failed} failed.`);
-      else toast.success(`Message submitted to ${response.sent} number${response.sent === 1 ? "" : "s"}.`);
+      const costNote = response.total_charged
+        ? ` ${response.total_charged} UGX deducted from the branch wallet (balance: ${response.wallet_balance} UGX).`
+        : "";
+      if (response.failed) toast.warning(`${response.sent} sent, ${response.failed} failed.${costNote}`);
+      else toast.success(`Message submitted to ${response.sent} number${response.sent === 1 ? "" : "s"}.${costNote}`);
       setSelectedNumbers([]);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Could not send messages.";
@@ -362,6 +372,9 @@ export default function MessagesPage() {
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {activity.recipients.length} recipients</span>
                             <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> {new Date(activity.createdAt).toLocaleTimeString()}</span>
+                            {!!activity.response?.total_charged && (
+                              <span className="flex items-center gap-1 text-amber-600">{activity.response.total_charged} UGX charged · balance {activity.response.wallet_balance} UGX</span>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-4 text-xs">
@@ -531,6 +544,14 @@ export default function MessagesPage() {
           </div>
 
           <div className="border-t bg-background px-6 py-4">
+            {costPerSms > 0 && (
+              <p className="mb-2 text-center text-xs text-muted-foreground">
+                {costPerSms} UGX per SMS
+                {selectedNumbers.length > 0 && (
+                  <> · est. {costPerSms * selectedNumbers.length} UGX for {selectedNumbers.length} recipient{selectedNumbers.length === 1 ? "" : "s"}</>
+                )}
+              </p>
+            )}
             <Button className="h-11 w-full gap-2" disabled={!canSend} onClick={handleSend}>
               {sendMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Send to {selectedNumbers.length} number{selectedNumbers.length === 1 ? "" : "s"}

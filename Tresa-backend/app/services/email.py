@@ -21,17 +21,18 @@ def render_email_template(template_name: str, **context: str) -> str:
     return template.safe_substitute(**escaped_context)
 
 
-def send_email(to_email: str, subject: str, html: str) -> None:
+def send_email(to_email: str, subject: str, html: str, attachments: list[dict] | None = None) -> None:
     if not settings.resend_key:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="RESEND_KEY is not configured")
-    resend.Emails.send(
-        {
-            "from": settings.email_from,
-            "to": [to_email],
-            "subject": subject,
-            "html": html,
-        }
-    )
+    payload: dict = {
+        "from": settings.email_from,
+        "to": [to_email],
+        "subject": subject,
+        "html": html,
+    }
+    if attachments:
+        payload["attachments"] = attachments
+    resend.Emails.send(payload)
 
 
 def send_verification_email(email: str, full_name: str, code: str) -> None:
@@ -87,6 +88,7 @@ def send_withdrawal_receipt_email(
     fee: int,
     net_amount: int,
     created_at: str,
+    branch_name: str,
 ) -> None:
     html = render_email_template(
         "withdrawal_receipt.html",
@@ -98,8 +100,20 @@ def send_withdrawal_receipt_email(
         fee=f"{fee:,}",
         net_amount=f"{net_amount:,}",
         created_at=created_at,
+        branch_name=branch_name,
     )
-    send_email(email, f"Withdrawal receipt {transaction_id}", html)
+    send_email(
+        email,
+        f"Withdrawal receipt {transaction_id}",
+        html,
+        attachments=[
+            {
+                "filename": f"withdrawal-receipt-{transaction_id}.html",
+                "content": list(html.encode("utf-8")),
+                "content_type": "text/html",
+            }
+        ],
+    )
 
 
 def send_staff_invite_email(email: str, full_name: str, branch_name: str, role: str, password: str) -> None:

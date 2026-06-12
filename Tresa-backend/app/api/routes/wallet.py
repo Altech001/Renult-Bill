@@ -227,6 +227,7 @@ def confirm_withdrawal(
             txn.fee_amount,
             txn.net_amount,
             txn.created_at.isoformat(),
+            branch.name,
         )
     except Exception:
         receipt_email_sent = False

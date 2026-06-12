@@ -1,14 +1,16 @@
+import { CaptivePortalDeployResponse, CaptivePortalResponse, renultApi } from "@/api/foreform";
 import AppHeader from "@/components/Header/AppHeader";
 import SEO from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import React, { useEffect, useState, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Fireworks } from "fireworks-js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useCaptivePortal, useDeployCaptivePortalR2, useUpsertCaptivePortal } from "@/hooks/useCaptivePortal";
+import { useRouters } from "@/hooks/useRouters";
+import { Fireworks } from "fireworks-js";
 import {
     ArrowLeft,
     ArrowRight,
@@ -18,18 +20,15 @@ import {
     FileText,
     Globe,
     Loader2,
-    Radio,
     Rocket,
     Save,
     Settings,
     Upload,
-    Wifi,
     XCircle
 } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useRouters } from "@/hooks/useRouters";
-import { useCaptivePortal, useUpsertCaptivePortal, useDeployCaptivePortalR2 } from "@/hooks/useCaptivePortal";
-import { CaptivePortalResponse, CaptivePortalDeployResponse } from "@/api/foreform";
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
@@ -37,10 +36,9 @@ export default function CaptiveIndex() {
     const [currentStep, setCurrentStep] = useState(0);
 
     const STEPS = [
-        { num: "01", title: "Captive Preview", subtitle: "See your portal live" },
-        { num: "02", title: "General Info", subtitle: "Name & description" },
-        { num: "03", title: "Branding & Template", subtitle: "Logo, contact & styling" },
-        { num: "04", title: "Preview & Deploy", subtitle: "Verify & push to MikroTik" },
+        { num: "01", title: "General Info", subtitle: "Name & description" },
+        { num: "02", title: "Branding & Template", subtitle: "Logo, contact & styling" },
+        { num: "03", title: "Preview & Deploy", subtitle: "Verify & push to MikroTik" },
     ];
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
@@ -54,34 +52,6 @@ export default function CaptiveIndex() {
 
     const fireworksRef = useRef<HTMLDivElement | null>(null);
     const fireworksInstanceRef = useRef<Fireworks | null>(null);
-
-    useEffect(() => {
-        if (currentStep === 3 && fireworksRef.current) {
-            if (!fireworksInstanceRef.current) {
-                fireworksInstanceRef.current = new Fireworks(fireworksRef.current, {
-                    gravity: 1.4,
-                    opacity: 0.4,
-                    autoresize: true,
-                    acceleration: 1.00,
-                });
-            }
-            fireworksInstanceRef.current.start();
-        } else {
-            if (fireworksInstanceRef.current) {
-                fireworksInstanceRef.current.stop();
-                fireworksInstanceRef.current.clear();
-                fireworksInstanceRef.current = null;
-            }
-        }
-
-        return () => {
-            if (fireworksInstanceRef.current) {
-                fireworksInstanceRef.current.stop();
-                fireworksInstanceRef.current.clear();
-                fireworksInstanceRef.current = null;
-            }
-        };
-    }, [currentStep]);
 
     const branchId = localStorage.getItem("selected-workspace") || "biltra";
     const { data: routers = [], isLoading: isLoadingRouters } = useRouters(branchId);
@@ -107,6 +77,37 @@ export default function CaptiveIndex() {
     const [pushResult, setPushResult] = useState<CaptivePortalDeployResponse | null>(null);
     const [deployState, setDeployState] = useState<"idle" | "saving" | "pushing" | "success" | "error">("idle");
     const [deployError, setDeployError] = useState<string>("");
+    const [resultDialogOpen, setResultDialogOpen] = useState(false);
+    const [logoUploading, setLogoUploading] = useState(false);
+    const logoInputRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        if (deployState === "success" && resultDialogOpen && fireworksRef.current) {
+            if (!fireworksInstanceRef.current) {
+                fireworksInstanceRef.current = new Fireworks(fireworksRef.current, {
+                    gravity: 1.4,
+                    opacity: 0.4,
+                    autoresize: true,
+                    acceleration: 1.00,
+                });
+            }
+            fireworksInstanceRef.current.start();
+        } else {
+            if (fireworksInstanceRef.current) {
+                fireworksInstanceRef.current.stop();
+                fireworksInstanceRef.current.clear();
+                fireworksInstanceRef.current = null;
+            }
+        }
+
+        return () => {
+            if (fireworksInstanceRef.current) {
+                fireworksInstanceRef.current.stop();
+                fireworksInstanceRef.current.clear();
+                fireworksInstanceRef.current = null;
+            }
+        };
+    }, [deployState, resultDialogOpen]);
 
     useEffect(() => {
         if (captivePortalData) {
@@ -131,7 +132,25 @@ export default function CaptiveIndex() {
         setDeployState("idle");
         setPushResult(null);
         setDeployError("");
+        setResultDialogOpen(false);
     }, [selectedRouterId]);
+
+    const handleLogoUpload = async (file: File) => {
+        if (!file.type.startsWith("image/")) {
+            toast.error("Please choose an image file.");
+            return;
+        }
+        setLogoUploading(true);
+        try {
+            const uploaded = await renultApi.uploads.upload(file, "captive-portal-logos");
+            updateDraft({ logo_url: uploaded.url });
+            toast.success("Logo uploaded.");
+        } catch (error) {
+            toast.error(errorMessage(error, "Could not upload logo."));
+        } finally {
+            setLogoUploading(false);
+        }
+    };
 
     const updateDraft = (updates: Partial<CaptivePortalResponse>) => {
         if (!draft) return;
@@ -140,6 +159,7 @@ export default function CaptiveIndex() {
         if (deployState === "success" || deployState === "error") {
             setDeployState("idle");
             setPushResult(null);
+            setResultDialogOpen(false);
         }
     };
 
@@ -188,16 +208,19 @@ export default function CaptiveIndex() {
             if (result.success) {
                 setPushResult(result);
                 setDeployState("success");
+                setResultDialogOpen(true);
                 toast.success("Captive portal deployed to MikroTik successfully!");
             } else {
                 setDeployState("error");
                 setPushResult(result);
                 setDeployError(result.error || "Deployment returned unsuccessful status");
+                setResultDialogOpen(true);
                 toast.error(result.error || "Failed to deploy to MikroTik");
             }
         } catch (err: unknown) {
             setDeployState("error");
             setDeployError(errorMessage(err, "Deployment failed"));
+            setResultDialogOpen(true);
             toast.error(errorMessage(err, "Failed to deploy captive portal"));
         }
     };
@@ -218,8 +241,6 @@ export default function CaptiveIndex() {
         }));
         window.open("/captive-portals/preview", "_blank");
     };
-
-    const selectedRouter = routers.find(r => r.id === selectedRouterId);
 
     return (
         <div className={`min-h-screen bg-background transition-all duration-300 ${sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[280px]"}`}>
@@ -372,12 +393,45 @@ export default function CaptiveIndex() {
                                     <CardContent className="p-5 space-y-4">
                                         <div>
                                             <Label htmlFor="logoUrl" className="text-xs font-bold mb-1.5 block">Logo Image URL / Path (Optional)</Label>
-                                            <Input
-                                                id="logoUrl"
-                                                value={draft.logo_url || ""}
-                                                onChange={(e) => updateDraft({ logo_url: e.target.value })}
-                                                placeholder="e.g. mm_logo.jpg or https://example.com/logo.png"
-                                            />
+                                            <div className="flex items-center gap-3">
+                                                {draft.logo_url && (
+                                                    <img
+                                                        src={draft.logo_url}
+                                                        alt="Logo preview"
+                                                        className="w-11 h-11 rounded-lg border border-border/40 object-cover shrink-0 bg-muted"
+                                                    />
+                                                )}
+                                                <Input
+                                                    id="logoUrl"
+                                                    value={draft.logo_url || ""}
+                                                    onChange={(e) => updateDraft({ logo_url: e.target.value })}
+                                                    placeholder="e.g. mm_logo.jpg or https://example.com/logo.png"
+                                                />
+                                                <input
+                                                    ref={logoInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) handleLogoUpload(file);
+                                                        e.target.value = "";
+                                                    }}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="shrink-0 gap-2"
+                                                    disabled={logoUploading}
+                                                    onClick={() => logoInputRef.current?.click()}
+                                                >
+                                                    {logoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                                    Upload
+                                                </Button>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1.5">
+                                                Upload an image (stored on Cloudflare R2) or paste a direct image URL.
+                                            </p>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
@@ -427,109 +481,9 @@ export default function CaptiveIndex() {
                                 </Card>
                             )}
 
-                            {/* Step 4: Deploy */}
+                            {/* Step 3: Deploy */}
                             {currentStep === 2 && (
                                 <div className="space-y-4">
-                                    {/* Config Summary Card */}
-                                    {/* <Card className="border-border/40 rounded shadow-sm">
-                                        <CardHeader className="py-4 px-5 border-b border-border/30">
-                                            <CardTitle className="text-sm font-bold flex items-center gap-2">
-                                                <Radio className="w-4 h-4 text-primary" /> Deployment Summary
-                                            </CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Review your portal configuration before deploying to <strong>{selectedRouter?.name || "router"}</strong> ({selectedRouter?.host || "—"})
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="p-5">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs">
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Title</span>
-                                                    <span className="font-semibold">{draft.title || "—"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Template</span>
-                                                    <span className="font-semibold capitalize">{draft.portal_template || "renault"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Description</span>
-                                                    <span className="text-muted-foreground">{draft.description || "—"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Logo URL</span>
-                                                    <span className="text-muted-foreground truncate block">{draft.logo_url || "Default (mm_logo.jpg)"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Phone 1</span>
-                                                    <span>{draft.phone_one || "—"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="font-bold text-muted-foreground block mb-0.5">Phone 2</span>
-                                                    <span>{draft.phone_two || "—"}</span>
-                                                </div>
-                                                {draft.last_pushed_at && (
-                                                    <div className="sm:col-span-2">
-                                                        <span className="font-bold text-muted-foreground block mb-0.5">Last Deployed</span>
-                                                        <span className="text-emerald-600 font-semibold">{new Date(draft.last_pushed_at).toLocaleString()}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </CardContent>
-                                    </Card> */}
-
-                                    {/* Push Result Card */}
-                                    {deployState === "success" && pushResult && (
-                                        <Card className="border-emerald-500/40 bg-emerald-500/5 rounded shadow-sm">
-                                            <CardContent className="p-5 space-y-3">
-                                                <div className="flex items-center gap-2 text-emerald-600">
-                                                    <CheckCircle2 className="w-5 h-5" />
-                                                    <span className="text-sm font-bold">Deployment Successful</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Router: <strong>{pushResult.router_name}</strong> — {pushResult.fetched_files.length} file{pushResult.fetched_files.length !== 1 ? "s" : ""} deployed
-                                                </p>
-                                                {pushResult.deployed_directory && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Directory: <strong className="font-mono">/{pushResult.deployed_directory}</strong>
-                                                        {pushResult.updated_profiles.length > 0 && (
-                                                            <> — profile{pushResult.updated_profiles.length !== 1 ? "s" : ""}: <strong>{pushResult.updated_profiles.join(", ")}</strong></>
-                                                        )}
-                                                    </p>
-                                                )}
-                                                {pushResult.fetched_files.length > 0 && (
-                                                    <div className="space-y-1">
-                                                        {pushResult.fetched_files.map((file, i) => (
-                                                            <div key={i} className="flex items-center gap-1.5 text-xs text-emerald-700 font-mono bg-emerald-500/10 px-2.5 py-1 rounded">
-                                                                <FileText className="w-3 h-3 shrink-0" /> {file}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-                                    )}
-
-                                    {deployState === "error" && (
-                                        <Card className="border-destructive/40 bg-destructive/5 rounded shadow-sm">
-                                            <CardContent className="p-5 flex items-start gap-3">
-                                                <XCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                                                <div className="space-y-3">
-                                                    <p className="text-sm font-bold text-destructive">Deployment Failed</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">{deployError}</p>
-                                                    {pushResult?.diagnostics && Object.keys(pushResult.diagnostics).length > 0 && (
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
-                                                            {Object.entries(pushResult.diagnostics).map(([key, value]) => (
-                                                                <div key={key} className="rounded border border-destructive/15 bg-background/60 px-2 py-1">
-                                                                    <span className="font-bold text-muted-foreground">{key.replace(/_/g, " ")}: </span>
-                                                                    <span className="font-mono">{value}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )}
-
                                     {/* Action Buttons */}
                                     <Card className="border-border/0 shadow-none rounded max-w-xl mx-auto">
                                         <CardContent className="p-5 space-y-3">
@@ -597,6 +551,68 @@ export default function CaptiveIndex() {
                                     </Card>
                                 </div>
                             )}
+
+                            {/* Deployment Result Dialog — shown after a deploy attempt for a focused, mobile-friendly result view */}
+                            <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
+                                <DialogContent className="max-h-[85vh] overflow-y-auto rounded sm:max-w-lg">
+                                    {deployState === "success" && pushResult ? (
+                                        <>
+                                            <DialogHeader>
+                                                <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                                                    <CheckCircle2 className="w-5 h-5" /> Deployment Successful
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Router: <strong>{pushResult.router_name}</strong> — {pushResult.fetched_files.length} file{pushResult.fetched_files.length !== 1 ? "s" : ""} deployed
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-3">
+                                                {pushResult.deployed_directory && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Directory: <strong className="font-mono">/{pushResult.deployed_directory}</strong>
+                                                        {pushResult.updated_profiles.length > 0 && (
+                                                            <> — profile{pushResult.updated_profiles.length !== 1 ? "s" : ""}: <strong>{pushResult.updated_profiles.join(", ")}</strong></>
+                                                        )}
+                                                    </p>
+                                                )}
+                                                {pushResult.fetched_files.length > 0 && (
+                                                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                                                        {pushResult.fetched_files.map((file, i) => (
+                                                            <div key={i} className="flex items-center gap-1.5 text-xs text-emerald-700 font-mono bg-emerald-500/10 px-2.5 py-1 rounded">
+                                                                <FileText className="w-3 h-3 shrink-0" /> {file}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <DialogFooter>
+                                                <Button onClick={() => setResultDialogOpen(false)} className="w-full sm:w-auto">Done</Button>
+                                            </DialogFooter>
+                                        </>
+                                    ) : deployState === "error" ? (
+                                        <>
+                                            <DialogHeader>
+                                                <DialogTitle className="flex items-center gap-2 text-destructive">
+                                                    <XCircle className="w-5 h-5" /> Deployment Failed
+                                                </DialogTitle>
+                                                <DialogDescription>{deployError}</DialogDescription>
+                                            </DialogHeader>
+                                            {pushResult?.diagnostics && Object.keys(pushResult.diagnostics).length > 0 && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+                                                    {Object.entries(pushResult.diagnostics).map(([key, value]) => (
+                                                        <div key={key} className="rounded border border-destructive/15 bg-muted/40 px-2 py-1">
+                                                            <span className="font-bold text-muted-foreground">{key.replace(/_/g, " ")}: </span>
+                                                            <span className="font-mono break-all">{value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={() => setResultDialogOpen(false)} className="w-full sm:w-auto">Close</Button>
+                                            </DialogFooter>
+                                        </>
+                                    ) : null}
+                                </DialogContent>
+                            </Dialog>
                         </div>
                     </div>
                 ) : null}

@@ -1,6 +1,7 @@
 import ftplib
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,8 @@ from app.services.routers.Packages import get_router_packages
 from app.services.routers.routeros import router_connection
 from app.services.storage import STORAGE_ERRORS, object_url, upload_bytes
 
+
+logger = logging.getLogger(__name__)
 
 PORTAL_ROOT = Path("app/portal")
 CAPTIVE_PORTAL_R2_PREFIX = "captive-portal"
@@ -679,10 +682,15 @@ def _walled_garden_sync_script_source(host_patterns: list[str]) -> str:
 
 
 def _sync_walled_garden_scheduler(api: Any, host_patterns: list[str]) -> None:
+    # "policy" is intentionally excluded: the tresa-monitor API user's own
+    # group is `api,read,write,test`, and RouterOS refuses to assign a script
+    # or scheduler a policy right the calling user doesn't itself hold
+    # ("user's policy does not allow to set such script policy"). The script
+    # only reads/writes walled-garden entries, so read+write+test is enough.
     script_resource = api.get_resource("/system/script")
     script_params = {
         "source": _walled_garden_sync_script_source(host_patterns),
-        "policy": "read,write,policy,test",
+        "policy": "read,write,test",
         "comment": "Tresa: re-add payment walled-garden entries if missing",
     }
     script_id = _first_resource_id(script_resource.get(name=_WALLED_GARDEN_SYNC_NAME))
@@ -695,7 +703,7 @@ def _sync_walled_garden_scheduler(api: Any, host_patterns: list[str]) -> None:
     scheduler_params = {
         "interval": "00:10:00",
         "on-event": f"/system script run {_WALLED_GARDEN_SYNC_NAME}",
-        "policy": "read,write,policy,test",
+        "policy": "read,write,test",
         "comment": "Tresa: keep payment walled-garden entries in place",
     }
     scheduler_id = _first_resource_id(scheduler_resource.get(name=_WALLED_GARDEN_SYNC_NAME))
@@ -743,7 +751,17 @@ def _set_hotspot_portal_configuration(router: Router, directory: str, template: 
                 existing_hosts.add(host_pattern.lower())
             allowed_hosts.append(host_pattern)
 
-        _sync_walled_garden_scheduler(api, allowed_hosts)
+        try:
+            _sync_walled_garden_scheduler(api, allowed_hosts)
+        except Exception:
+            # Self-healing scheduler is a best-effort extra; the walled-garden
+            # entries above are already applied, so don't fail the deployment
+            # over a router whose API user can't manage scripts/schedulers.
+            logger.warning(
+                "Could not set up walled-garden self-healing scheduler on router %s",
+                router.id,
+                exc_info=True,
+            )
     return updated_profiles, allowed_hosts
 
 
