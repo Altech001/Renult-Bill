@@ -27,7 +27,6 @@ import {
   Package,
   PackageSearchIcon,
   PanelLeft,
-  PhoneForwardedIcon,
   Plus,
   Settings,
   Ticket,
@@ -462,7 +461,7 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
       <aside
         className={`
           fixed top-0 left-0 z-50 h-full bg-white
-          border-r border-border/30 shadow-2xl md:shadow-none md:z-20
+          border-r border-border/80 shadow-2xl md:shadow-none md:z-20
           flex flex-col custom-scrollbar
           transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
           md:translate-x-0

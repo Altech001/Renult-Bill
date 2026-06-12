@@ -461,26 +461,6 @@ export default function SetUpProvison() {
                         className="border-slate-200 focus-visible:ring-primary h-10"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="location" className="text-sm font-medium text-slate-700">
-                        Branch Name
-                      </Label>
-                      <Select
-                        value={location}
-                        onValueChange={(val) => setLocation(val)}
-                      >
-                        <SelectTrigger id="location" className="border-slate-200 focus-visible:ring-primary h-10">
-                          <SelectValue placeholder="Select branch" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Kampala">Kampala</SelectItem>
-                          <SelectItem value="Gulu">Gulu</SelectItem>
-                          <SelectItem value="Mbale">Mbale</SelectItem>
-                          <SelectItem value="Arua">Arua</SelectItem>
-                          <SelectItem value="Jinja">Jinja</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
