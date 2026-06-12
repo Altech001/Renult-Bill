@@ -658,6 +658,53 @@ def _walled_garden_hosts_for_template(template: str) -> list[str]:
     return hosts
 
 
+# RouterOS script + scheduler that re-adds any missing payment walled-garden
+# entries on boot and periodically thereafter (e.g. if `/ip hotspot setup` is
+# re-run and clears the walled-garden list). Named distinctly from the
+# router's other schedulers (RunHeartbeat, RunHeartbeatCleanup,
+# RunChrPingFailover, FixDNSonBoot, ...).
+_WALLED_GARDEN_SYNC_NAME = "TresaWalledGardenSync"
+
+
+def _walled_garden_sync_script_source(host_patterns: list[str]) -> str:
+    hosts_literal = ";".join(f'"{host}"' for host in host_patterns)
+    return (
+        f":local hosts {{{hosts_literal}}}\n"
+        ":foreach h in=$hosts do={\n"
+        "    :if ([:len [/ip hotspot walled-garden find where dst-host=$h]] = 0) do={\n"
+        '        /ip hotspot walled-garden add action=allow dst-host=$h comment="Tresa: payment walled garden"\n'
+        "    }\n"
+        "}\n"
+    )
+
+
+def _sync_walled_garden_scheduler(api: Any, host_patterns: list[str]) -> None:
+    script_resource = api.get_resource("/system/script")
+    script_params = {
+        "source": _walled_garden_sync_script_source(host_patterns),
+        "policy": "read,write,policy,test",
+        "comment": "Tresa: re-add payment walled-garden entries if missing",
+    }
+    script_id = _first_resource_id(script_resource.get(name=_WALLED_GARDEN_SYNC_NAME))
+    if script_id:
+        script_resource.set(id=script_id, **script_params)
+    else:
+        script_resource.add(name=_WALLED_GARDEN_SYNC_NAME, **script_params)
+
+    scheduler_resource = api.get_resource("/system/scheduler")
+    scheduler_params = {
+        "interval": "00:10:00",
+        "on-event": f"/system script run {_WALLED_GARDEN_SYNC_NAME}",
+        "policy": "read,write,policy,test",
+        "comment": "Tresa: keep payment walled-garden entries in place",
+    }
+    scheduler_id = _first_resource_id(scheduler_resource.get(name=_WALLED_GARDEN_SYNC_NAME))
+    if scheduler_id:
+        scheduler_resource.set(id=scheduler_id, **scheduler_params)
+    else:
+        scheduler_resource.add(name=_WALLED_GARDEN_SYNC_NAME, **{"start-time": "startup", **scheduler_params})
+
+
 def _set_hotspot_portal_configuration(router: Router, directory: str, template: str = "renault") -> tuple[list[str], list[str]]:
     updated_profiles: list[str] = []
     allowed_hosts: list[str] = []
@@ -695,6 +742,8 @@ def _set_hotspot_portal_configuration(router: Router, directory: str, template: 
                 walled_garden.add(action="allow", **{"dst-host": host_pattern})
                 existing_hosts.add(host_pattern.lower())
             allowed_hosts.append(host_pattern)
+
+        _sync_walled_garden_scheduler(api, allowed_hosts)
     return updated_profiles, allowed_hosts
 
 

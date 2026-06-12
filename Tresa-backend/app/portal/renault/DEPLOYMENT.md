@@ -54,6 +54,17 @@ left untouched, no duplicates are created). If the router uses a strict DNS
 or firewall policy, also ensure hotspot clients can resolve DNS and make
 HTTPS connections to these hosts.
 
+### Self-healing: `TresaWalledGardenSync` script + scheduler
+
+Every deploy also creates (or updates) a `/system script` and
+`/system scheduler` entry named **`TresaWalledGardenSync`** on the router.
+It runs once on `startup` and then every `00:10:00`, re-adding any of the
+walled-garden entries above if they're ever missing — e.g. if
+`/ip hotspot setup` is re-run and clears the walled-garden list. It's named
+distinctly from this router's other schedulers (`RunHeartbeat`,
+`RunHeartbeatCleanup`, `RunChrPingFailover`, `FixDNSonBoot`, ...) so it won't
+collide or get confused with them.
+
 ## Hotspot profile
 
 Point the hotspot profile at the directory containing these files. For a
