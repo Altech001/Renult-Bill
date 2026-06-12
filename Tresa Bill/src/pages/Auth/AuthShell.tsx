@@ -22,7 +22,7 @@ export default function AuthShell({ title, subtitle, seoTitle, path, children, f
 
       <div className="w-full max-w-[380px] flex flex-col items-center z-10 pb-16">
         <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-3">
-          <img src="/logo.png" alt="Renult" className="w-10 h-10 object-contain" />
+          <img src="/icons/mini.png" alt="Renult" className="w-10 h-10 object-contain" />
         </Link>
         <div className="text-center mb-6">
           <h1 className="text-[22px] font-bold text-slate-800 mb-1">{title}</h1>
