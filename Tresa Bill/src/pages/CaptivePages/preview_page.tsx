@@ -23,7 +23,8 @@ import {
   Moon,
   Search,
   ChevronRight,
-  X
+  X,
+  Tv
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -311,7 +312,7 @@ export default function CaptivePreview() {
 
   return (
     <div className={`min-h-screen flex flex-col justify-between transition-all duration-300 ${config.portal_template === "renault" ? (renaultTheme === "dark" ? "bg-[#000000] text-slate-100" : "bg-[#f9f9f9] text-slate-900") : style.wrapper}`}>
-      
+
       {/* Top Banner Alert to let user know it's a simulation */}
       <div className="w-full bg-black/85 backdrop-blur-sm border-b border-slate-800 text-white p-3 flex items-center justify-between shadow-md text-xs z-50 sticky top-0">
         <div className="flex items-center gap-2 max-w-lg mx-auto w-full justify-between">
@@ -366,7 +367,7 @@ export default function CaptivePreview() {
                     {config.title || "Renault WIFI"}
                   </h1>
                   <p className="text-[10px] text-slate-300 font-medium">{config.description || "High-speed internet access portal"}</p>
-                  
+
                   {/* Contact numbers */}
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     {config.phone_one && (
@@ -623,21 +624,6 @@ export default function CaptivePreview() {
            ════════════════════════════════════════════════════════ */
         <>
           <div className="my-auto w-full max-w-md mx-auto z-10 p-4">
-            {/* LOGO */}
-            <div className="text-center mb-6">
-              <div className={`text-2xl sm:text-3xl font-black tracking-tight flex items-center justify-center gap-2 ${style.logo}`}>
-                <Wifi className="w-6 h-6 animate-pulse" />
-                {config.logo_url || "⚡ Free Wi-Fi"}
-              </div>
-              <div className="flex justify-center gap-1.5 mt-2">
-                <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${style.pill}`}>
-                  Template: {config.portal_template}
-                </span>
-                <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${style.pill}`}>
-                  Status: Sandbox
-                </span>
-              </div>
-            </div>
 
             {/* LOADING STATE */}
             {step === "connecting" && (
@@ -656,7 +642,7 @@ export default function CaptivePreview() {
             {step === "login" && (
               <Card className={`border-none shadow-2xl ${style.card}`}>
                 <CardContent className="p-5 sm:p-6 space-y-6">
-                  
+
                   {/* Heading */}
                   <div className="text-center space-y-2">
                     <h1 className="text-lg sm:text-xl font-extrabold tracking-tight">
@@ -753,7 +739,7 @@ export default function CaptivePreview() {
             {step === "success" && (
               <Card className={`border-none shadow-2xl ${style.card}`}>
                 <CardContent className="p-5 sm:p-6 space-y-6 text-center">
-                  
+
                   {/* Checkmark icon */}
                   <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
                     <CheckCircle2 className="w-8 h-8 animate-bounce" />
