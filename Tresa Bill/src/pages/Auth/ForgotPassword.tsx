@@ -35,7 +35,7 @@ export default function ForgotPassword() {
           Send Code
         </SubmitButton>
       </form>
-      <Link to="/login" className="mt-8 text-[13px] text-slate-900 hover:underline font-medium">Back to login</Link>
+      <Link to="/login" className="mt-8 text-[13px] text-slate-900 hover:underline font-medium black-ops-one-regular">Back to login</Link>
     </AuthShell>
   );
 }

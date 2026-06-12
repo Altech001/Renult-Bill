@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Download, Info, Trash2 } from "lucide-react";
+import { Download, Info, Printer, Trash2 } from "lucide-react";
 
 export interface RegistryVoucher {
   id: string;
@@ -30,6 +30,7 @@ export interface RegistryBatch {
 interface BulkBatchesTableProps {
   batches: RegistryBatch[];
   deletingBatch: boolean;
+  onPreviewBatch: (batch: RegistryBatch) => void;
   onDownloadBatch: (batch: RegistryBatch) => void;
   onDeleteBatch: (batch: RegistryBatch) => void;
 }
@@ -37,6 +38,7 @@ interface BulkBatchesTableProps {
 export function BulkBatchesTable({
   batches,
   deletingBatch,
+  onPreviewBatch,
   onDownloadBatch,
   onDeleteBatch,
 }: BulkBatchesTableProps) {
@@ -92,6 +94,9 @@ export function BulkBatchesTable({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => onPreviewBatch(batch)} className="h-8 w-8" title="Preview & print this batch">
+                        <Printer className="w-3.5 h-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => onDownloadBatch(batch)} className="h-8 w-8" title="Download batch PDF">
                         <Download className="w-3.5 h-3.5" />
                       </Button>

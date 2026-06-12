@@ -171,7 +171,7 @@ export default function Signup() {
         </form>
       </div>
       <div className="mt-8 text-center">
-        <p className="text-[13px] text-slate-600 font-medium">
+        <p className="text-[13px] text-slate-600 font-medium black-ops-one-regular">
           Already have an account? <Link to="/login" className="text-slate-900 hover:underline">Sign in</Link>
         </p>
       </div>

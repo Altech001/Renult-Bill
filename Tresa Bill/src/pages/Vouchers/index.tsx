@@ -1,12 +1,9 @@
 import AppHeader from "@/components/Header/AppHeader";
 import SEO from "@/components/SEO";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
     Select,
     SelectContent,
@@ -27,16 +24,15 @@ import {
     useVoucherJob,
 } from "@/hooks/useRouters";
 import { cn } from "@/lib/utils";
-import { downloadVoucherPdf } from "@/lib/voucherPdf";
 import { voucherUiStatus } from "@/lib/voucherStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-    CheckCircle2,
     CloudUpload,
     Coins,
     Download,
     Hash,
     Loader2,
+    Palette,
     Phone,
     Printer,
     RefreshCw,
@@ -46,11 +42,19 @@ import {
     Ticket,
     Trash2,
     Users,
-    Wifi,
     X
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { BulkBatchesTable, IndividualVouchersTable, RegistryBatch, RegistryVoucher } from "./VoucherRegistryTables";
+import {
+    DEFAULT_VOUCHER_THEME_ID,
+    downloadVoucherPdf,
+    getVoucherTheme,
+    VOUCHER_PRINT_STYLES,
+    VOUCHER_THEMES,
+    VoucherCard,
+    VoucherProgressDialog,
+} from "./templates";
 
 import { toast } from "sonner";
 
@@ -200,6 +204,10 @@ export default function VouchersIndex() {
     // Printing Preview Mode State
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState<boolean>(false);
     const [showWifiName, setShowWifiName] = useState<boolean>(true);
+    const [printTheme, setPrintTheme] = useState<string>(DEFAULT_VOUCHER_THEME_ID);
+    // Scoped preview: a freshly generated batch/single voucher, or an existing bulk batch
+    const [freshVouchers, setFreshVouchers] = useState<{ vouchers: Voucher[]; wifiName?: string } | null>(null);
+    const [printBatchRef, setPrintBatchRef] = useState<{ id: string; routerName: string } | null>(null);
 
     useEffect(() => {
         if (!voucherJobId) return;
@@ -233,33 +241,42 @@ export default function VouchersIndex() {
                     type: "Bulk",
                     batchId: voucherJobContext.batchId,
                 }));
-                downloadVoucherPdf(
-                    newVouchers.map((voucher) => ({
-                        code: voucher.id,
-                        packageName: voucher.packageName,
-                        duration: voucher.duration,
-                        price: voucher.pricePaid,
-                        status: voucher.status,
-                        batchId: voucher.batchId,
-                        wifiName: showWifiName ? voucherJobContext.wifiName : undefined,
-                    })),
-                    `${voucherJobContext.batchId || "voucher-batch"}-vouchers.pdf`,
-                );
                 setSelectedVouchers([]);
+                setPrintBatchRef(null);
+                setFreshVouchers({ vouchers: newVouchers, wifiName: voucherJobContext.wifiName });
+                setIsPrintPreviewOpen(true);
                 toast.success(`Created and verified ${result.count} vouchers on MikroTik.`);
+                setActiveTab("batches");
             } else {
+                const created = result.vouchers[0];
+                if (created) {
+                    const newVoucher: Voucher = {
+                        id: created.voucher_code,
+                        phone: bulkPhone.trim() || undefined,
+                        routerName: created.router_name,
+                        packageName: voucherJobContext?.packageName || "",
+                        duration: voucherJobContext?.duration || "",
+                        pricePaid: voucherJobContext?.price || 0,
+                        purchaseTime: created.created_at.replace('T', ' ').substring(0, 19),
+                        status: voucherUiStatus(created.status),
+                        type: "Single",
+                    };
+                    setPrintBatchRef(null);
+                    setFreshVouchers({ vouchers: [newVoucher], wifiName: voucherJobContext?.wifiName });
+                    setIsPrintPreviewOpen(true);
+                }
                 setBulkPhone("");
-                toast.success(`Created and verified voucher ${result.vouchers[0]?.voucher_code || ""}.`);
+                toast.success(`Created and verified voucher ${created?.voucher_code || ""}.`);
+                setActiveTab("singles");
             }
             if (result.router_sync_error) toast.warning(result.router_sync_error);
-            setActiveTab("registry");
         }
 
         localStorage.removeItem("active-voucher-job");
         localStorage.removeItem("active-voucher-job-context");
         setVoucherJobId("");
         setVoucherJobContext(null);
-    }, [branchId, queryClient, selectedRouterId, showWifiName, voucherJob, voucherJobContext, voucherJobId]);
+    }, [branchId, bulkPhone, queryClient, selectedRouterId, voucherJob, voucherJobContext, voucherJobId]);
 
     const queueVoucherJob = async (payload: Parameters<typeof queueVouchersMutation.mutateAsync>[0], context: VoucherJobContext) => {
         const queued = await queueVouchersMutation.mutateAsync(payload);
@@ -440,7 +457,16 @@ export default function VouchersIndex() {
         }
     };
 
-    const getVouchersToPrint = () => {
+    // Returns the vouchers currently in scope for the print/PDF preview:
+    // freshly generated vouchers > a previewed bulk batch > the table selection > the filtered list.
+    const getVouchersToPrint = (): Voucher[] => {
+        if (freshVouchers) return freshVouchers.vouchers;
+        if (printBatchRef) {
+            return vouchers.filter(
+                (v) => v.batchId === printBatchRef.id
+                    && v.routerName.trim().toUpperCase() === printBatchRef.routerName.trim().toUpperCase(),
+            );
+        }
         if (selectedVouchers.length > 0) {
             return vouchers.filter(v => selectedVouchers.includes(v.id));
         }
@@ -454,6 +480,9 @@ export default function VouchersIndex() {
 
     const findRouterId = (routerName: string) =>
         routers.find((router) => router.name.trim().toUpperCase() === routerName.trim().toUpperCase())?.id;
+
+    const findRouterByName = (routerName: string) =>
+        routers.find((router) => router.name.trim().toUpperCase() === routerName.trim().toUpperCase());
 
     const deleteSelected = async () => {
         const selected = filteredSingleVouchers.filter((voucher) => selectedVouchers.includes(voucher.id));
@@ -505,18 +534,25 @@ export default function VouchersIndex() {
         try {
             const result = await deleteBatchMutation.mutateAsync({ routerId, batchId: batch.id });
             setSelectedVouchers((current) => current.filter((id) => !vouchers.some((voucher) => voucher.batchId === batch.id && voucher.id === id)));
-            toast.success(`Deleted ${result.deleted} PostgreSQL records and ${result.router_deleted} MikroTik users from batch ${batch.id}.`);
+            toast.success(`Deleted ${result.deleted} records and ${result.router_deleted} MikroTik users from batch ${batch.id}.`);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to delete voucher batch.");
         }
     };
 
-    const downloadPdf = () => {
+    // Wi-Fi name to print on the cards currently in scope for the preview/download.
+    const previewWifiName = freshVouchers?.wifiName
+        ?? (printBatchRef ? findRouterByName(printBatchRef.routerName)?.name : selectedRouter?.name);
+
+    const handleDownloadPreviewPdf = () => {
         const rows = getVouchersToPrint();
         if (rows.length === 0) {
-            toast.error("No vouchers selected for download.");
+            toast.error("No vouchers to download.");
             return;
         }
+        const baseName = freshVouchers?.vouchers[0]?.batchId
+            || printBatchRef?.id
+            || `vouchers-${new Date().toISOString().slice(0, 10)}`;
         downloadVoucherPdf(
             rows.map((voucher) => ({
                 code: voucher.id,
@@ -525,9 +561,10 @@ export default function VouchersIndex() {
                 price: voucher.pricePaid,
                 status: voucher.status,
                 batchId: voucher.batchId,
-                wifiName: showWifiName ? selectedRouter?.name : undefined,
+                wifiName: showWifiName ? previewWifiName : undefined,
             })),
-            `vouchers-${new Date().toISOString().slice(0, 10)}.pdf`,
+            `${baseName}-vouchers.pdf`,
+            printTheme,
         );
         toast.success(`Downloaded ${rows.length} voucher${rows.length === 1 ? "" : "s"} as PDF.`);
     };
@@ -549,11 +586,27 @@ export default function VouchersIndex() {
                 price: voucher.pricePaid,
                 status: voucher.status,
                 batchId: voucher.batchId,
-                wifiName: showWifiName ? selectedRouter?.name : undefined,
+                wifiName: showWifiName ? findRouterByName(batchRecord.routerName)?.name : undefined,
             })),
             `${batchRecord.id}-vouchers.pdf`,
+            printTheme,
         );
         toast.success(`Downloaded batch ${batchRecord.id} as PDF.`);
+    };
+
+    // Opens the print/PDF preview scoped to a single bulk batch.
+    const previewBatch = (batchRecord: RegistryBatch) => {
+        const batch = vouchers.filter(
+            (voucher) => voucher.batchId === batchRecord.id
+                && voucher.routerName.trim().toUpperCase() === batchRecord.routerName.trim().toUpperCase(),
+        );
+        if (batch.length === 0) {
+            toast.error("This batch has no vouchers to preview.");
+            return;
+        }
+        setFreshVouchers(null);
+        setPrintBatchRef({ id: batchRecord.id, routerName: batchRecord.routerName });
+        setIsPrintPreviewOpen(true);
     };
 
     const handleVerifyAllVouchers = async () => {
@@ -653,11 +706,15 @@ export default function VouchersIndex() {
                         <Button
                             size="sm"
                             onClick={() => {
-                                const toPrint = getVouchersToPrint();
+                                const toPrint = selectedVouchers.length > 0
+                                    ? vouchers.filter((v) => selectedVouchers.includes(v.id))
+                                    : filteredVouchers;
                                 if (toPrint.length === 0) {
                                     toast.error("No vouchers to print. Generate some first or select vouchers from the table.");
                                     return;
                                 }
+                                setFreshVouchers(null);
+                                setPrintBatchRef(null);
                                 setIsPrintPreviewOpen(true);
                             }}
                             className="gap-2 text-xs font-semibold h-9"
@@ -929,6 +986,7 @@ export default function VouchersIndex() {
                         <BulkBatchesTable
                             batches={voucherBatches}
                             deletingBatch={deleteBatchMutation.isPending}
+                            onPreviewBatch={previewBatch}
                             onDownloadBatch={downloadBatchPdf}
                             onDeleteBatch={handleDeleteBatch}
                         />
@@ -999,7 +1057,11 @@ export default function VouchersIndex() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => setIsPrintPreviewOpen(true)}
+                                        onClick={() => {
+                                            setFreshVouchers(null);
+                                            setPrintBatchRef(null);
+                                            setIsPrintPreviewOpen(true);
+                                        }}
                                         className="h-8 gap-1 px-2.5 text-xs text-primary font-semibold border-primary/20 hover:bg-primary/5"
                                     >
                                         <Printer className="w-3.5 h-3.5" />
@@ -1040,18 +1102,43 @@ export default function VouchersIndex() {
             {isPrintPreviewOpen && (
                 <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm overflow-y-auto flex flex-col print:relative print:inset-auto print:bg-white print:overflow-visible">
                     {/* Controls Bar (Hidden during printing) */}
-                    <div className="sticky top-0 bg-card border-b border-border/40 px-6 py-4 flex items-center justify-between z-10 print:hidden shadow-sm">
+                    <div className="sticky top-0 z-10 flex flex-col gap-3 border-b border-border/40 bg-card px-6 py-4 shadow-sm print:hidden sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
                                 <Printer className="w-4 h-4 text-primary" />
-                                Voucher Print & PDF Preview
+                                {freshVouchers
+                                    ? "Vouchers Ready — Pick a Template"
+                                    : printBatchRef
+                                        ? `Batch Preview — ${printBatchRef.id}`
+                                        : "Voucher Print & PDF Preview"}
                             </h2>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                                Displaying {getVouchersToPrint().length} vouchers. Ready to be printed or downloaded to PDF.
+                                {freshVouchers
+                                    ? `${freshVouchers.vouchers.length} new voucher${freshVouchers.vouchers.length === 1 ? "" : "s"} created and verified on MikroTik. `
+                                    : `Displaying ${getVouchersToPrint().length} vouchers. `}
+                                Ready to be printed or downloaded to PDF.
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {/* Color template picker */}
+                            <div className="flex items-center gap-1.5 rounded border border-border/20 bg-muted/40 px-2.5 py-1.5">
+                                <Palette className="w-3.5 h-3.5 text-muted-foreground" />
+                                {VOUCHER_THEMES.map((theme) => (
+                                    <button
+                                        key={theme.id}
+                                        type="button"
+                                        title={theme.name}
+                                        onClick={() => setPrintTheme(theme.id)}
+                                        className={cn(
+                                            "h-5 w-5 rounded-full border-2 transition-transform",
+                                            theme.swatch,
+                                            printTheme === theme.id ? "scale-110 border-foreground" : "border-transparent hover:scale-105",
+                                        )}
+                                    />
+                                ))}
+                            </div>
+
                             <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors select-none bg-muted/40 px-3 py-1.5 rounded border border-border/20">
                                 <input
                                     type="checkbox"
@@ -1061,22 +1148,32 @@ export default function VouchersIndex() {
                                 />
                                 Show Wi-Fi Name
                             </label>
-                        </div>
 
-                        <div className="flex items-center gap-2">
                             <Button
                                 variant="outline"
+                                size="sm"
+                                onClick={handleDownloadPreviewPdf}
+                                className="gap-1.5 text-xs font-bold h-9 px-4"
+                            >
+                                <Download className="w-4 h-4" />
+                                Download PDF
+                            </Button>
+                            <Button
                                 size="sm"
                                 onClick={handleNativePrint}
                                 className="gap-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/95 hover:text-primary-foreground h-9 px-4 border-none"
                             >
-                                <Download className="w-4 h-4" />
-                                Print / Save PDF
+                                <Printer className="w-4 h-4" />
+                                Print
                             </Button>
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setIsPrintPreviewOpen(false)}
+                                onClick={() => {
+                                    setIsPrintPreviewOpen(false);
+                                    setFreshVouchers(null);
+                                    setPrintBatchRef(null);
+                                }}
                                 className="h-9 w-9 p-0 rounded-full border border-border/40 hover:bg-muted/50"
                             >
                                 <X className="w-4 h-4 text-foreground" />
@@ -1087,179 +1184,25 @@ export default function VouchersIndex() {
                     {/* Printable Container */}
                     <div className="flex-1 max-w-5xl mx-auto w-full p-6 sm:p-8 print:p-0 print:max-w-none">
                         {/* Embedded styles specifically for printing page alignment */}
-                        <style dangerouslySetInnerHTML={{
-                            __html: `
-              @media print {
-                body {
-                  background: white !important;
-                  color: black !important;
-                }
-                .print-container {
-                  padding: 0 !important;
-                  margin: 0 !important;
-                  background: white !important;
-                  width: 190mm !important;
-                }
-                /* Hide sidebar, header and preview toolbar */
-                .print\\:hidden, aside, header, .sticky {
-                  display: none !important;
-                }
-                /* Configure page size to fit 12 rows of 5 columns (60 cards per page) */
-                @page {
-                  size: A4 portrait;
-                  margin: 8mm 10mm !important;
-                }
-                .print-card-grid {
-                  grid-template-columns: repeat(5, 1fr) !important;
-                  gap: 1.5mm !important;
-                  display: grid !important;
-                  background: white !important;
-                  width: 190mm !important;
-                }
-                .print-card {
-                  width: 36.5mm !important;
-                  height: 21.5mm !important;
-                  min-height: 21.5mm !important;
-                  max-height: 21.5mm !important;
-                  padding: 1.2mm !important;
-                  margin: 0 !important;
-                  border: 0.5pt dashed #444444 !important;
-                  border-radius: 0.5mm !important;
-                  background: white !important;
-                  color: black !important;
-                  box-shadow: none !important;
-                  break-inside: avoid !important;
-                  page-break-inside: avoid !important;
-                  -webkit-print-color-adjust: exact;
-                  print-color-adjust: exact;
-                  display: flex !important;
-                  flex-direction: column !important;
-                  justify-content: space-between !important;
-                  overflow: hidden !important;
-                }
-                .print-card .print-wifi-watermark {
-                  display: none !important;
-                }
-                .print-card .print-header {
-                  border-bottom: 0.15mm solid #dddddd !important;
-                  padding-bottom: 0.4mm !important;
-                  margin-bottom: 0.4mm !important;
-                  display: flex !important;
-                  justify-content: space-between !important;
-                  align-items: center !important;
-                }
-                .print-card .print-logo-container {
-                  display: flex !important;
-                  align-items: center !important;
-                  gap: 0.8mm !important;
-                }
-                .print-card .print-logo-icon {
-                  padding: 0.2mm !important;
-                  background: #f3f4f6 !important;
-                  border-radius: 0.1mm !important;
-                  display: flex !important;
-                  align-items: center !important;
-                  justify-content: center !important;
-                }
-                .print-card .print-logo-icon svg {
-                  width: 2.5mm !important;
-                  height: 2.5mm !important;
-                  color: black !important;
-                }
-                .print-card h4 {
-                  font-size: 5pt !important;
-                  font-weight: 800 !important;
-                  line-height: 1 !important;
-                  margin: 0 !important;
-                  color: black !important;
-                }
-                .print-card .print-duration-badge {
-                  font-size: 4.5pt !important;
-                  padding: 0 0.6mm !important;
-                  height: auto !important;
-                  line-height: 1.1 !important;
-                  background: #f3f4f6 !important;
-                  color: black !important;
-                  border: none !important;
-                  border-radius: 0.3mm !important;
-                }
-                .print-card .print-code-container {
-                  margin: 0.3mm 0 !important;
-                  padding: 0.5mm !important;
-                  background: #f9fafb !important;
-                  border: 0.15mm solid #f3f4f6 !important;
-                  border-radius: 0.4mm !important;
-                  text-align: center !important;
-                }
-                .print-card .print-code-text {
-                  font-size: 7.5pt !important;
-                  font-weight: 800 !important;
-                  letter-spacing: 0.3px !important;
-                  line-height: 1 !important;
-                  margin: 0 !important;
-                  color: black !important;
-                }
-                .print-card .print-details {
-                  font-size: 4.8pt !important;
-                  margin-top: 0.3mm !important;
-                  padding-top: 0.3mm !important;
-                  border-top: 0.15mm solid #e5e7eb !important;
-                  line-height: 1.1 !important;
-                  color: #374151 !important;
-                }
-                .print-card .print-details .flex {
-                  display: flex !important;
-                  justify-content: space-between !important;
-                }
-                .print-card .print-details span {
-                  line-height: 1 !important;
-                }
-              }
-            `}} />
+                        <style dangerouslySetInnerHTML={{ __html: VOUCHER_PRINT_STYLES }} />
 
                         <div className="print-container">
                             {/* Hotspot Voucher Card Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 print-card-grid">
                                 {getVouchersToPrint().map((voucher) => (
-                                    <div
+                                    <VoucherCard
                                         key={voucher.id}
-                                        className="print-card relative border border-border/80 rounded-none p-2.5 flex flex-col justify-between overflow-hidden shadow-none group hover:border-primary/50 transition-colors h-[125px] w-full break-inside-avoid page-break-inside-avoid"
-                                    >
-                                        {/* Background Wifi Watermark */}
-                                        <Wifi className="print-wifi-watermark absolute right-[-10px] bottom-[-10px] w-16 h-16 text-muted/5 dark:text-muted/5 pointer-events-none group-hover:scale-110 transition-transform" />
-
-                                        {/* Logo & Header */}
-                                        <div className="print-header flex justify-between items-center border-b border-border/30 pb-1 mb-1">
-                                            <div className="print-logo-container flex items-center gap-1">
-                                                <div className="print-logo-icon p-0.5 rounded bg-primary/10 text-primary shrink-0">
-                                                    <Wifi className="w-3 h-3" />
-                                                </div>
-                                                {showWifiName && (
-                                                    <div>
-                                                        <h4 className="text-[10px] font-black uppercase tracking-wider text-foreground leading-none">TRESA WIFI</h4>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <Badge className="print-duration-badge bg-primary/10 text-primary hover:bg-primary/10 border-none text-[8.5px] font-bold py-0 px-1 uppercase rounded-sm">
-                                                {voucher.duration}
-                                            </Badge>
-                                        </div>
-
-                                        {/* Code Section */}
-                                        <div className="print-code-container my-1 text-center p-1 rounded">
-                                            <h3 className="print-code-text font-mono text-sm font-black tracking-widest text-primary leading-none select-all uppercase">
-                                                {voucher.id}
-                                            </h3>
-                                        </div>
-
-                                        {/* Details: Price, Pack, Info */}
-                                        <div className="print-details text-[9px] space-y-0.5 my-0.5 border-t border-border/10 pt-1 text-foreground/80">
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground font-medium">Price:</span>
-                                                <span className="font-bold text-foreground text-right">UGX {voucher.pricePaid.toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                        voucher={{
+                                            code: voucher.id,
+                                            packageName: voucher.packageName,
+                                            duration: voucher.duration,
+                                            price: voucher.pricePaid,
+                                            batchId: voucher.batchId,
+                                            wifiName: showWifiName ? previewWifiName : undefined,
+                                        }}
+                                        theme={getVoucherTheme(printTheme)}
+                                        showWifiName={showWifiName}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -1267,41 +1210,14 @@ export default function VouchersIndex() {
                 </div>
             )}
 
-            <Dialog open={queueVouchersMutation.isPending || !!voucherJobId}>
-                <DialogContent
-                    className="sm:max-w-lg"
-                    onEscapeKeyDown={(event) => event.preventDefault()}
-                    onInteractOutside={(event) => event.preventDefault()}
-                >
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            {voucherJob?.progress === 100 ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Loader2 className="w-5 h-5 animate-spin text-primary" />}
-                            Adding vouchers to MikroTik
-                        </DialogTitle>
-                        <DialogDescription>
-                            This job is locked while PostgreSQL and RouterOS finish processing. Do not close or reload this page.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs font-semibold">
-                                <span>{voucherJob?.stage || "Queueing"}</span>
-                                <span>{voucherJob?.progress || 0}%</span>
-                            </div>
-                            <Progress value={voucherJob?.progress || 0} />
-                            <p className="text-xs text-muted-foreground">{voucherJob?.message || "Saving the voucher job to PostgreSQL..."}</p>
-                        </div>
-                        <div className="max-h-52 overflow-y-auto rounded border bg-muted/20">
-                            {(voucherJob?.events || []).map((event, index) => (
-                                <div key={`${event.time}-${index}`} className="grid grid-cols-[78px_1fr] gap-2 border-b px-3 py-2 text-[11px] last:border-b-0">
-                                    <span className="font-semibold text-primary">{event.stage}</span>
-                                    <span className="text-muted-foreground">{event.message}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <VoucherProgressDialog
+                open={queueVouchersMutation.isPending || !!voucherJobId}
+                stage={voucherJob?.stage}
+                message={voucherJob?.message}
+                progress={voucherJob?.progress}
+                events={voucherJob?.events}
+                failed={voucherJob?.status === "FAILED"}
+            />
         </div>
     );
 }

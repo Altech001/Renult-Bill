@@ -12,11 +12,11 @@ interface AuthShellProps {
   footer?: React.ReactNode;
 }
 
-const highlights = [
-  { icon: Activity, text: "Live router monitoring & alerts" },
-  { icon: Ticket, text: "Automated hotspot voucher sales" },
-  { icon: Radio, text: "Remote Winbox & API access" },
-];
+// const highlights = [
+//   { icon: Activity, text: "Live router monitoring & alerts" },
+//   { icon: Ticket, text: "Automated hotspot voucher sales" },
+//   { icon: Radio, text: "Remote Winbox & API access" },
+// ];
 
 export default function AuthShell({ title, subtitle, seoTitle, path, children, footer }: AuthShellProps) {
   return (
@@ -29,38 +29,28 @@ export default function AuthShell({ title, subtitle, seoTitle, path, children, f
       {/* Left branding panel */}
       <div className="hidden lg:flex lg:w-1/2 relative flex-col justify-between overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-primary/30 p-12 text-white">
         <img
-          src="/bg/bg.png"
+          src="/icons/mini.png"
           alt=""
           className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm pointer-events-none select-none"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/60 to-slate-900/30" />
 
         <div className="relative z-10">
-          <Link to="/" className="inline-flex items-center bg-white rounded-xl px-4 py-2.5 shadow-lg">
-            <img src="/icons/logo_2.png" alt="Renult" className="h-7 w-auto object-contain" />
+          <Link to="/" className="inline-flex items-center ">
+            <img src="/icons/logo_2.png" alt="Renult" className="h-16 w-auto object-contain" />
           </Link>
         </div>
 
         <div className="relative z-10 max-w-md">
-          <h2 className="text-3xl font-bold leading-tight mb-3">
+          <h2 className="text-3xl leading-tight mb-3 black-ops-one-regular">
             Run your ISP business from one dashboard.
           </h2>
-          <p className="text-sm text-slate-300 mb-8">
-            Manage routers, hotspot vouchers, and customer billing — all in real time, from anywhere.
+          <p className="text-sm text-slate-300 mb-8 orbitron-400">
+            Manage routers, hotspot vouchers, and customer billing, <br /> all in real time, from anywhere.
           </p>
-          <ul className="space-y-3">
-            {highlights.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-sm text-slate-200">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
-                  <Icon className="h-4 w-4 text-emerald-400" />
-                </span>
-                {text}
-              </li>
-            ))}
-          </ul>
         </div>
 
-        <div className="relative z-10 text-[11px] text-slate-400 font-medium">
+        <div className="relative z-10 text-[11px] text-slate-400 font-medium black-ops-one-regular">
           Renult © {new Date().getFullYear()}
         </div>
       </div>
@@ -78,15 +68,15 @@ export default function AuthShell({ title, subtitle, seoTitle, path, children, f
             <img src="/icons/mini.png" alt="Renult" className="w-10 h-10 object-contain" />
           </Link>
           <div className="text-center mb-6">
-            <h1 className="text-[22px] font-bold text-slate-800 mb-1">{title}</h1>
-            <p className="text-[13px] text-slate-500">{subtitle}</p>
+            <h1 className="text-[22px] font-bold text-slate-800 mb-1 black-ops-one-regular">{title}</h1>
+            <p className="text-[13px] text-slate-500 orbitron-400">{subtitle}</p>
           </div>
           {children}
           {footer}
         </div>
 
-        <div className="absolute bottom-6 flex flex-wrap items-center justify-center gap-6 text-[10px] text-slate-500 font-bold w-full px-4 lg:hidden">
-          <span>Renult © {new Date().getFullYear()}</span>
+        <div className="absolute bottom-6 flex flex-wrap items-center  justify-center gap-6 text-[10px] text-slate-500 font-bold w-full px-4 lg:hidden">
+          <span className="black-ops-one-regular">Renult © {new Date().getFullYear()}</span>
         </div>
       </div>
     </div>

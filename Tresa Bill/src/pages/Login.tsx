@@ -65,7 +65,7 @@ export default function Login() {
                     <div className="mx-auto w-12 h-12 flex items-center justify-center mb-3">
                         <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
                     </div>
-                    <h2 className="text-[22px] font-bold text-slate-800 mb-1">ForeForm</h2>
+                    <h2 className="text-[22px] font-bold text-slate-800 mb-1 black-ops-one-regular">Renult</h2>
                     <p className="text-[13px] text-slate-500">Elevate your customer experience with AI agents</p>
                 </div>
 

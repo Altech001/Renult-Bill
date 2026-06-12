@@ -90,7 +90,7 @@ export default function Login() {
         </form>
       </div>
       <div className="mt-8 text-center">
-        <p className="text-[13px] text-slate-600 font-medium">
+        <p className="text-[13px] text-slate-600 font-medium black-ops-one-regular">
           New to Renult? <Link to="/signup" className="text-slate-900 hover:underline">Create an account</Link>
         </p>
       </div>
