@@ -1,11 +1,13 @@
 import ftplib
 import io
+import json
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import sqlalchemy as sa
 from sqlmodel import Session, select
@@ -13,11 +15,13 @@ from sqlmodel import Session, select
 from app.models.captive_portal import CaptivePortal
 from app.models.branch import Branch
 from app.models.notification import Notification
+from app.models.portal_payment import PortalPayment
 from app.models.router import Router
 from app.models.staff import Staff
 from app.models.user import User
 from app.models.voucher_purchase import VoucherPurchase
 from app.models.wallet import Wallet
+from app.services import renult_pay
 from app.services import wallet as wallet_svc
 from app.services.routers.Packages import get_router_packages
 from app.services.routers.routeros import router_connection
@@ -28,6 +32,14 @@ PORTAL_ROOT = Path("app/portal")
 CAPTIVE_PORTAL_R2_PREFIX = "captive-portal"
 DEFAULT_CAPTIVE_TITLE = "Renault WIFI"
 DEFAULT_CAPTIVE_DESCRIPTION = "High-speed internet access portal"
+
+# The gateway only accepts collections within this range (UGX).
+PAYMENT_MIN_AMOUNT = 500
+PAYMENT_MAX_AMOUNT = 10_000_000
+
+# Minimum time between calls to the gateway's verify endpoint for a single
+# payment, so a fast-polling browser tab can't hammer the gateway.
+PAYMENT_VERIFY_INTERVAL = timedelta(seconds=2)
 
 
 def normalize_router_name(router_name: str) -> str:
@@ -43,6 +55,11 @@ def normalize_phone(phone_number: str) -> str:
     if phone.startswith("7") and len(phone) == 9:
         return "256" + phone
     return phone
+
+
+def _gateway_phone(phone_number: str) -> str:
+    """E.164 phone number for the Renult Pay gateway, e.g. "+256700000000"."""
+    return f"+{normalize_phone(phone_number)}"
 
 
 _PUBLIC_ID_SUFFIX_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
@@ -298,22 +315,19 @@ def notify_branch_staff(session: Session, router: Router, title: str, body: str,
         session.add(Notification(user_id=user_id, category=category, title=title, body=body))
 
 
-def record_portal_payment(
+def _create_and_provision_voucher(
     session: Session,
-    router_name: str,
-    phone_number: str,
-    package_id: int,
-    payment_reference: str | None = None,
-) -> tuple[Wallet, VoucherPurchase]:
-    router = find_router_by_name(session, router_name)
-    if not router:
-        raise ValueError("Router not found for this portal")
+    router: Router,
+    wallet: Wallet,
+    package: dict[str, Any],
+    payment_reference: str,
+) -> VoucherPurchase:
+    """Create a PAID voucher, credit the branch wallet, and push it to MikroTik.
 
-    package = find_package(session, router.name, package_id)
-    if not package:
-        raise ValueError("Package not found for this router")
-
-    wallet = get_or_create_wallet(session, router.name, phone_number)
+    MikroTik sync failures are recorded on the voucher (ROUTER_SYNC_FAILED)
+    rather than raised, since the customer's cash has already been collected
+    and must be reflected in the branch wallet regardless.
+    """
     amount = int(package["total"])
 
     voucher = VoucherPurchase(
@@ -341,9 +355,6 @@ def record_portal_payment(
     session.refresh(wallet)
     session.refresh(voucher)
 
-    # The customer has paid via the captive portal — collect that amount into
-    # the branch's wallet now, regardless of whether MikroTik provisioning
-    # below succeeds, since the payment itself has already been taken.
     branch = session.get(Branch, router.branch_id)
     if branch:
         branch_wallet = wallet_svc.ensure_wallet(session, branch.id)
@@ -358,16 +369,186 @@ def record_portal_payment(
     try:
         _upsert_hotspot_voucher(router, voucher, package)
         voucher.status = "PROVISIONED"
-        session.add(voucher)
-        session.commit()
-        session.refresh(voucher)
-    except Exception as exc:
+    except Exception:
         voucher.status = "ROUTER_SYNC_FAILED"
-        session.add(voucher)
-        session.commit()
-        raise ValueError(f"Payment recorded but MikroTik voucher sync failed: {exc}") from exc
+    session.add(voucher)
+    session.commit()
+    session.refresh(voucher)
+    return voucher
 
-    return wallet, voucher
+
+def initiate_portal_payment(
+    session: Session,
+    router_name: str,
+    phone_number: str,
+    package_id: int,
+    buy_for: str = "self",
+) -> PortalPayment:
+    """Start a mobile money collection for a captive portal voucher purchase.
+
+    The voucher itself is only created once `refresh_portal_payment` observes
+    a SUCCESS status from the gateway.
+    """
+    router = find_router_by_name(session, router_name)
+    if not router:
+        raise ValueError("Router not found for this portal")
+
+    package = find_package(session, router.name, package_id)
+    if not package:
+        raise ValueError("Package not found for this router")
+
+    amount = int(package["total"])
+    if amount < PAYMENT_MIN_AMOUNT or amount > PAYMENT_MAX_AMOUNT:
+        raise ValueError("This package's price is outside the payment gateway's allowed range")
+
+    normalized_phone = normalize_phone(phone_number)
+    payment = PortalPayment(
+        router_name=normalize_router_name(router.name),
+        phone_number=normalized_phone,
+        package_id=package["package_id"],
+        amount=amount,
+        buy_for=(buy_for or "self").strip().lower() or "self",
+        status="PENDING",
+    )
+    session.add(payment)
+    session.commit()
+    session.refresh(payment)
+
+    try:
+        response = renult_pay.initialize_collection(
+            amount=amount,
+            phone_number=_gateway_phone(normalized_phone),
+            reference=payment.reference,
+            description=f"{package['profile']} voucher on {router.name}",
+        )
+    except renult_pay.RenultPayError as exc:
+        payment.status = "FAILED"
+        payment.error = str(exc)
+        payment.updated_at = datetime.utcnow()
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        return payment
+
+    gateway_status = renult_pay.extract_status(response)
+    payment.collection_uuid = renult_pay.extract_collection_uuid(response)
+    payment.gateway_status = gateway_status
+    payment.gateway_response = json.dumps(response)[:8000]
+    payment.status = renult_pay.normalize_status(gateway_status)
+    if payment.status == "FAILED":
+        payment.error = "The payment gateway rejected the collection request"
+    payment.updated_at = datetime.utcnow()
+    session.add(payment)
+    session.commit()
+    session.refresh(payment)
+    return payment
+
+
+def _finalize_payment_voucher(session: Session, payment: PortalPayment) -> PortalPayment:
+    """Provision the voucher for a payment whose gateway status is SUCCESS."""
+    router = find_router_by_name(session, payment.router_name)
+    if not router:
+        payment.error = "Payment succeeded but the router could not be found to provision the voucher"
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        return payment
+
+    package = find_package(session, router.name, payment.package_id)
+    if not package:
+        # The customer's cash has already been collected, so credit the
+        # branch wallet and flag staff to follow up, instead of losing it.
+        branch = session.get(Branch, router.branch_id)
+        if branch:
+            branch_wallet = wallet_svc.ensure_wallet(session, branch.id)
+            wallet_svc.deposit(
+                session=session,
+                wallet_id=branch_wallet.id,
+                amount=payment.amount,
+                user_id=branch.user_id,
+                reference=str(payment.reference),
+            )
+        notify_branch_staff(
+            session,
+            router,
+            title="Payment received but package unavailable",
+            body=(
+                f"{payment.phone_number} paid UGX {payment.amount:,} on {router.name}, "
+                "but the selected package is no longer available. Please contact the customer."
+            ),
+        )
+        payment.error = "Payment received, but the package is no longer available. Please contact support."
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        return payment
+
+    wallet = get_or_create_wallet(session, router.name, payment.phone_number)
+    voucher = _create_and_provision_voucher(session, router, wallet, package, str(payment.reference))
+    payment.voucher_id = voucher.id
+    session.add(payment)
+    session.commit()
+    session.refresh(payment)
+    return payment
+
+
+def refresh_portal_payment(session: Session, router_name: str, reference: UUID) -> PortalPayment:
+    """Re-check a pending payment's status with the gateway and provision its voucher on success."""
+    payment = session.exec(
+        select(PortalPayment)
+        .where(PortalPayment.reference == reference)
+        .where(PortalPayment.router_name == normalize_router_name(router_name))
+    ).first()
+    if not payment:
+        raise ValueError("Payment not found")
+
+    if payment.status != "PENDING" or not payment.collection_uuid:
+        return payment
+
+    now = datetime.utcnow()
+    if payment.last_checked_at and now - payment.last_checked_at < PAYMENT_VERIFY_INTERVAL:
+        return payment
+
+    try:
+        response = renult_pay.verify_collection(payment.collection_uuid)
+    except renult_pay.RenultPayError as exc:
+        payment.last_checked_at = now
+        payment.error = str(exc)
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        return payment
+
+    gateway_status = renult_pay.extract_status(response)
+    normalized = renult_pay.normalize_status(gateway_status)
+    payment.gateway_status = gateway_status
+    payment.gateway_response = json.dumps(response)[:8000]
+    payment.last_checked_at = now
+    payment.updated_at = now
+
+    if normalized == "SUCCESS":
+        payment.status = "SUCCESS"
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        return _finalize_payment_voucher(session, payment)
+
+    if normalized == "FAILED":
+        payment.status = "FAILED"
+        payment.error = payment.error or "The payment was not completed"
+
+    session.add(payment)
+    session.commit()
+    session.refresh(payment)
+    return payment
+
+
+def get_portal_payment(session: Session, router_name: str, reference: UUID) -> PortalPayment | None:
+    return session.exec(
+        select(PortalPayment)
+        .where(PortalPayment.reference == reference)
+        .where(PortalPayment.router_name == normalize_router_name(router_name))
+    ).first()
 
 
 def find_vouchers(session: Session, router_name: str, phone_number: str) -> list[VoucherPurchase]:

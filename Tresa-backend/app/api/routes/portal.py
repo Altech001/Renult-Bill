@@ -10,6 +10,7 @@ from app.models.branch import Branch
 from app.models.captive_portal import CaptivePortal
 from app.models.router import Router
 from app.models.staff import Staff
+from app.models.voucher_purchase import VoucherPurchase
 from app.schemas.portal import (
     CaptivePortalDeployResponse,
     CaptivePortalPushRequest,
@@ -17,7 +18,8 @@ from app.schemas.portal import (
     CaptivePortalUpsert,
     PortalFindVoucherResponse,
     PortalPaymentCreate,
-    PortalPaymentResponse,
+    PortalPaymentInitResponse,
+    PortalPaymentStatusResponse,
     PortalVoucherResponse,
     PushCaptiveResponse,
 )
@@ -26,9 +28,10 @@ from app.services.portal import (
     find_router_by_name,
     find_vouchers,
     get_public_captive_config,
+    initiate_portal_payment,
     normalize_router_name,
     push_captive_files_to_mikrotik,
-    record_portal_payment,
+    refresh_portal_payment,
 )
 from app.services.routers.Packages import get_router_packages
 
@@ -103,26 +106,67 @@ def public_captive_packages(router_name: str, session: SessionDep):
     return {"success": True, "data": get_router_packages(lookup_name, session)}
 
 
-@router.post("/portal/{router_name}/payments", response_model=PortalPaymentResponse)
+@router.post("/portal/{router_name}/payments", response_model=PortalPaymentInitResponse)
 def public_portal_payment(
     router_name: str,
     payload: PortalPaymentCreate,
     session: SessionDep,
-) -> PortalPaymentResponse:
+) -> PortalPaymentInitResponse:
     try:
-        _, voucher = record_portal_payment(
+        payment = initiate_portal_payment(
             session=session,
             router_name=router_name,
             phone_number=payload.phone_number,
             package_id=payload.package_id,
-            payment_reference=payload.payment_reference,
+            buy_for=payload.buy_for,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-    return PortalPaymentResponse(
-        success=True,
-        voucher=serialize_voucher(voucher),
+    message = None
+    if payment.status == "PENDING":
+        message = "Check your phone and approve the mobile money payment prompt."
+    elif payment.status == "FAILED":
+        message = payment.error or "The payment could not be started. Please try again."
+
+    return PortalPaymentInitResponse(
+        success=payment.status != "FAILED",
+        reference=payment.reference,
+        status=payment.status,
+        message=message,
+    )
+
+
+@router.get("/portal/{router_name}/payments/{reference}", response_model=PortalPaymentStatusResponse)
+def public_portal_payment_status(
+    router_name: str,
+    reference: UUID,
+    session: SessionDep,
+) -> PortalPaymentStatusResponse:
+    try:
+        payment = refresh_portal_payment(session, router_name, reference)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    voucher_response = None
+    if payment.voucher_id:
+        voucher = session.get(VoucherPurchase, payment.voucher_id)
+        if voucher:
+            voucher_response = serialize_voucher(voucher)
+
+    message = None
+    if payment.status == "PENDING":
+        message = "Waiting for mobile money confirmation. Check your phone and enter your PIN."
+    elif payment.status == "FAILED":
+        message = payment.error or "The payment was not completed."
+    elif payment.status == "SUCCESS" and not voucher_response:
+        message = payment.error or "Payment confirmed, finishing setup..."
+
+    return PortalPaymentStatusResponse(
+        success=payment.status != "FAILED",
+        status=payment.status,
+        voucher=voucher_response,
+        message=message,
     )
 
 

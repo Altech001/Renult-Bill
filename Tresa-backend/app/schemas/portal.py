@@ -36,7 +36,6 @@ class CaptivePortalResponse(BaseModel):
 class PortalPaymentCreate(BaseModel):
     phone_number: str = Field(min_length=5, max_length=30)
     package_id: int
-    payment_reference: Optional[str] = Field(default=None, max_length=120)
     buy_for: str = Field(default="self", max_length=40)
 
 
@@ -56,9 +55,18 @@ class PortalVoucherResponse(BaseModel):
     created_at: datetime
 
 
-class PortalPaymentResponse(BaseModel):
+class PortalPaymentInitResponse(BaseModel):
     success: bool
-    voucher: PortalVoucherResponse
+    reference: UUID
+    status: str
+    message: Optional[str] = None
+
+
+class PortalPaymentStatusResponse(BaseModel):
+    success: bool
+    status: str
+    voucher: Optional[PortalVoucherResponse] = None
+    message: Optional[str] = None
 
 
 class PortalFindVoucherResponse(BaseModel):

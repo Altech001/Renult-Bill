@@ -12,6 +12,7 @@ from app.models.ticket_category import TicketCategory
 from app.models.ticket import Ticket
 from app.models.voucher_purchase import VoucherPurchase
 from app.models.voucher_job import VoucherJob
+from app.models.portal_payment import PortalPayment
 from app.models.withdrawal_challenge import WithdrawalChallenge
 from app.models.wallet import Wallet, WalletTransaction
 from app.models.branch_wallet import BranchWallet, BranchWalletTransaction
@@ -33,6 +34,7 @@ __all__ = [
     "Ticket",
     "VoucherPurchase",
     "VoucherJob",
+    "PortalPayment",
     "WithdrawalChallenge",
     "Wallet",
     "WalletTransaction",
