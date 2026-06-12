@@ -12,6 +12,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.models.captive_portal import CaptivePortal
 from app.models.branch import Branch
 from app.models.notification import Notification
@@ -616,19 +617,41 @@ _TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS: dict[str, list[str]] = {
     "auroaa": ["fonts.googleapis.com", "fonts.gstatic.com", "hspotagent.com"],
 }
 
+# Mobile money providers used by the Renult Pay gateway. Some MTN/Airtel
+# payment-confirmation flows open in the customer's browser, so these need
+# walled-garden access before the visitor has authenticated.
+_MOBILE_MONEY_WALLED_GARDEN_HOSTS: list[str] = [
+    "mtn.co.ug",
+    "mtn.com",
+    "airtel.co.ug",
+    "airtel.africa",
+]
+
+
+def _host_from_url(url: str) -> str:
+    return re.sub(r"^https?://", "", url).split("/", 1)[0].split(":", 1)[0].strip().lower()
+
 
 def _walled_garden_host_patterns(host: str) -> list[str]:
     """Exact host plus a `*.host` wildcard so subdomains are allowed too."""
     host = host.strip().lower()
     if not host:
         return []
+    # Both the portal API and the Renult Pay gateway are hosted on Vercel
+    # (`*.vercel.app`). A single `vercel.app` wildcard entry covers both
+    # today and any future Vercel-hosted endpoint without further changes.
+    if host == "vercel.app" or host.endswith(".vercel.app"):
+        return ["vercel.app", "*.vercel.app"]
     return [host, f"*.{host}"]
 
 
 def _walled_garden_hosts_for_template(template: str) -> list[str]:
-    api_host = re.sub(r"^https?://", "", _portal_api_base()).split("/", 1)[0].split(":", 1)[0]
+    api_host = _host_from_url(_portal_api_base())
+    payment_host = _host_from_url(settings.renult_pay_base_url)
+
+    base_hosts = [api_host, payment_host, *_MOBILE_MONEY_WALLED_GARDEN_HOSTS]
     hosts: list[str] = []
-    for host in (api_host, *_TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS.get(template, [])):
+    for host in (*base_hosts, *_TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS.get(template, [])):
         for pattern in _walled_garden_host_patterns(host):
             if pattern not in hosts:
                 hosts.append(pattern)

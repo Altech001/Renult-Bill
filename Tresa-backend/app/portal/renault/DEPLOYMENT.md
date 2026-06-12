@@ -23,14 +23,36 @@ must exist in the Renault billing backend.
 
 ## Walled garden
 
-Allow the Renault payment and voucher API before authentication:
+"Push to MikroTik" and "Deploy via R2" automatically add the walled-garden
+entries needed for the voucher/payment flow (see
+`_walled_garden_hosts_for_template` in `app/services/portal.py`):
 
 ```routeros
-/ip hotspot walled-garden add dst-host=renult.vercel.app
+/ip hotspot walled-garden
+add action=allow dst-host=vercel.app
+add action=allow dst-host=*.vercel.app
+add action=allow dst-host=mtn.co.ug
+add action=allow dst-host=*.mtn.co.ug
+add action=allow dst-host=mtn.com
+add action=allow dst-host=*.mtn.com
+add action=allow dst-host=airtel.co.ug
+add action=allow dst-host=*.airtel.co.ug
+add action=allow dst-host=airtel.africa
+add action=allow dst-host=*.airtel.africa
 ```
 
-If the router uses a strict DNS or firewall policy, also ensure hotspot clients
-can resolve DNS and make HTTPS connections to `renult.vercel.app`.
+- `vercel.app` / `*.vercel.app` covers both the backend API
+  (`renult.vercel.app`) and the Renult Pay gateway
+  (`renult-pay.vercel.app`) — both are Vercel-hosted, so this single
+  wildcard keeps working even if either project's domain changes.
+- The `mtn.*` / `airtel.*` entries allow MTN and Airtel mobile money
+  payment-confirmation pages to load in the customer's browser before
+  they've authenticated on the hotspot.
+
+These entries are added automatically on every deploy (existing entries are
+left untouched, no duplicates are created). If the router uses a strict DNS
+or firewall policy, also ensure hotspot clients can resolve DNS and make
+HTTPS connections to these hosts.
 
 ## Hotspot profile
 
