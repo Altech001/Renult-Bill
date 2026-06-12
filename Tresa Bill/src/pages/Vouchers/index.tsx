@@ -1107,9 +1107,9 @@ export default function VouchersIndex() {
                             <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
                                 <Printer className="w-4 h-4 text-primary" />
                                 {freshVouchers
-                                    ? "Vouchers Ready — Pick a Template"
+                                    ? "Vouchers Ready - Pick a Template"
                                     : printBatchRef
-                                        ? `Batch Preview — ${printBatchRef.id}`
+                                        ? `Batch Preview - ${printBatchRef.id}`
                                         : "Voucher Print & PDF Preview"}
                             </h2>
                             <p className="text-xs text-muted-foreground mt-0.5">

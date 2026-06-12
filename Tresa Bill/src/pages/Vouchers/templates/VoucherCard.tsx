@@ -26,7 +26,7 @@ export function VoucherCard({ voucher, theme, showWifiName }: VoucherCardProps) 
   return (
     <div
       className={cn(
-        "print-card group relative flex aspect-[368/176] w-full flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md",
+        "print-card group relative flex aspect-[368/176] w-full flex-col overflow-hidden rounded border bg-white shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md",
         theme.border,
       )}
     >
