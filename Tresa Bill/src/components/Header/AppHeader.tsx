@@ -233,7 +233,7 @@ export default function AppHeader({ onCreateForm }: AppHeaderProps) {
                     ? `${monitoring.online} online, ${monitoring.offline} offline, ${monitoring.unknown} waiting`
                     : "No active routers are being monitored."}
                 </p>
-                {monitoring?.routers.some((router) => !router.configured) && (
+                {monitoring?.routers?.some((router) => !router.configured) && (
                   <div className="mt-4 space-y-2 border-t pt-3">
                     <p className="text-[11px] font-semibold text-foreground">
                       SNMP setup required

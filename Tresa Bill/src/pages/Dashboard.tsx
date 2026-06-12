@@ -6,11 +6,13 @@ import SEO from "@/components/SEO";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDown,
   ArrowUp,
   BarChart3,
   ChevronLeft,
@@ -26,7 +28,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useRouters, useRouterStatus, useBranchVouchers } from "@/hooks/useRouters";
+import { useRouters, useRouterStatus, useBranchVouchers, useBranchActiveUsers, useBranchRouterStatus } from "@/hooks/useRouters";
 import { useBranchWallet } from "@/hooks/useWallet";
 import { voucherUiStatus } from "@/lib/voucherStatus";
 
@@ -42,11 +44,66 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
+// Formats a byte count as B/KB/MB/GB/TB, e.g. 5368709120 -> "5.0 GB".
+function formatBytes(bytes: number, decimals = 1) {
+  if (!bytes) return "0 MB";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
+}
 
+// Picks the router's WAN-facing interface for traffic totals, preferring "ether1"
+// to avoid double-counting bridge + slave-port traffic when summing usage.
+function pickWanInterface(interfaces?: Record<string, any>[]) {
+  if (!interfaces || interfaces.length === 0) return undefined;
+  const ether1 = interfaces.find((iface) => String(iface.name).toLowerCase() === "ether1");
+  if (ether1) return ether1;
+  return interfaces.reduce((best, iface) => {
+    const total = Number(iface["rx-byte"] ?? 0) + Number(iface["tx-byte"] ?? 0);
+    const bestTotal = Number(best["rx-byte"] ?? 0) + Number(best["tx-byte"] ?? 0);
+    return total > bestTotal ? iface : best;
+  });
+}
+
+function PeriodBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
+      {label}
+    </span>
+  );
+}
+
+function LiveBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+      Live
+    </span>
+  );
+}
+
+// Small bar-chart glyph used in place of a static icon on the stat cards.
+function MiniBarChart({ bars }: { bars: { value: number; color: string }[] }) {
+  const data = bars.map((bar, index) => ({ index, value: bar.value }));
+  return (
+    <div className="h-9 w-14 shrink-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+          <Bar dataKey="value" radius={[2, 2, 1, 1]} barSize={7}>
+            {bars.map((bar, index) => (
+              <Cell key={index} fill={bar.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -109,7 +166,7 @@ export default function Dashboard() {
 
   // Fetch real router status for the first configured router
   const branchId = localStorage.getItem("selected-workspace") || "biltra";
-  const { data: routers = [] } = useRouters(branchId);
+  const { data: routers = [], isLoading: isRoutersLoading } = useRouters(branchId);
   const firstRouterId = routers[0]?.id || "";
   const { data: statusData, refetch: refetchStatus } = useRouterStatus(firstRouterId);
   const { data: wallet, isLoading: isWalletLoading } = useBranchWallet(branchId, user?.account_type !== "staff");
@@ -119,7 +176,39 @@ export default function Dashboard() {
     enabled: Boolean(branchId),
   });
   // Fetch branch vouchers (up to 1000) for recent purchases and heatmap metrics
-  const { data: vouchersData } = useBranchVouchers(branchId, { limit: 1000 });
+  const { data: vouchersData, isLoading: isVouchersLoading } = useBranchVouchers(branchId, { limit: 1000 });
+
+  // Active hotspot users and live router status across every router in the branch.
+  const activeUsersQueries = useBranchActiveUsers(routers);
+  const routerStatusQueries = useBranchRouterStatus(routers);
+
+  const onlineUsersCount = activeUsersQueries.reduce((sum, query) => sum + (query.data?.count ?? 0), 0);
+  // A DHCP lease still bound to a device counts as an active session even after
+  // the device drops off the hotspot's "active users" (currently-connected) table.
+  const sessionCount = routerStatusQueries.reduce((sum, query) => {
+    const leases = query.data?.dhcp_leases || [];
+    const bound = leases.filter((lease) => !lease.status || String(lease.status).toLowerCase() === "bound").length;
+    return sum + bound;
+  }, 0);
+  const offlineWithSession = Math.max(0, sessionCount - onlineUsersCount);
+  const totalActiveUsers = Math.max(onlineUsersCount, sessionCount);
+  const isActiveUsersLoading = isRoutersLoading
+    || activeUsersQueries.some((query) => query.isLoading)
+    || routerStatusQueries.some((query) => query.isLoading);
+
+  const dataUsageTotals = routerStatusQueries.reduce(
+    (acc, query) => {
+      const wanInterface = pickWanInterface(query.data?.interfaces);
+      if (wanInterface) {
+        acc.rx += Number(wanInterface["rx-byte"] ?? 0);
+        acc.tx += Number(wanInterface["tx-byte"] ?? 0);
+      }
+      return acc;
+    },
+    { rx: 0, tx: 0 },
+  );
+  const dataUsageTotal = dataUsageTotals.rx + dataUsageTotals.tx;
+  const isDataUsageLoading = isRoutersLoading || routerStatusQueries.some((query) => query.isLoading);
 
   const chartData = useMemo(() => {
     const grouped: Record<string, { sales: number; responses: number; sortKey: string }> = {};
@@ -147,7 +236,7 @@ export default function Dashboard() {
   // Derive recent voucher-style rows from real vouchers data
   const recentVouchers = useMemo(() => {
     if (!vouchersData?.vouchers) return [];
-    return vouchersData.vouchers.slice(0, 10).map((v) => ({
+    return vouchersData.vouchers.slice(0, 5).map((v) => ({
       id: v.voucher_code,
       buyerName: v.phone_number === "BULK" ? "Bulk Generated" : `Customer (${v.phone_number})`,
       email: v.phone_number === "BULK" ? "bulk@tresa.com" : `${v.phone_number}@tresa.com`,
@@ -243,13 +332,20 @@ export default function Dashboard() {
               className="bg-card border border-primary/40 hover:border-primary/60 transition-all rounded p-5 flex flex-col justify-between text-left h-full w-full relative group shadow-[0_0_10px_hsl(var(--primary)/0.05)]"
             >
               <div className="flex justify-between items-start w-full">
-                <span className="text-xs font-semibold text-muted-foreground">Net Sales</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Net Sales</span>
+                  <PeriodBadge label="Today" />
+                </div>
                 <TrendingUp className="w-4 h-4 text-emerald-500 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </div>
               <div className="mt-3">
-                <h3 className="text-2xl font-black text-foreground tracking-tight">
-                  {vouchersData ? `UGX ${todayVoucherSales.toLocaleString()}` : "..."}
-                </h3>
+                {isVouchersLoading ? (
+                  <Skeleton className="h-8 w-28" />
+                ) : (
+                  <h3 className="text-2xl font-black text-foreground tracking-tight">
+                    UGX {todayVoucherSales.toLocaleString()}
+                  </h3>
+                )}
                 <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">
                   Voucher sales recorded today. Wallet credit is tracked separately.
                 </p>
@@ -260,13 +356,20 @@ export default function Dashboard() {
               className="bg-card border border-primary/40 hover:border-primary/60 transition-all rounded p-5 flex flex-col justify-between text-left h-full w-full relative group shadow-[0_0_10px_hsl(var(--primary)/0.05)] cursor-pointer"
             >
               <div className="flex justify-between items-start w-full">
-                <span className="text-xs font-semibold text-muted-foreground">Account Credit</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Mobile Money Credits</span>
+                  <LiveBadge />
+                </div>
                 <Coins className="w-4 h-4 text-amber-500 transition-transform group-hover:scale-110" />
               </div>
               <div className="mt-3">
-                <h3 className="text-2xl font-black text-foreground tracking-tight">
-                  {isWalletLoading ? "..." : `UGX ${(wallet?.balance ?? 0).toLocaleString()}`}
-                </h3>
+                {isWalletLoading ? (
+                  <Skeleton className="h-8 w-28" />
+                ) : (
+                  <h3 className="text-2xl font-black text-foreground tracking-tight">
+                    UGX {(wallet?.balance ?? 0).toLocaleString()}
+                  </h3>
+                )}
                 <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">Net prepaid balance.</p>
               </div>
             </button> : <div className="bg-card border border-primary/40 rounded p-5 flex flex-col justify-between">
@@ -352,6 +455,76 @@ export default function Dashboard() {
                 </div>
               </button>
             </SystemInsightsPopover>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-3">
+            <div className="bg-card border border-primary/40 rounded p-5 flex flex-col justify-between min-h-[150px]">
+              <div className="flex justify-between items-start w-full">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Active Users</span>
+                  <LiveBadge />
+                </div>
+                <MiniBarChart
+                  bars={[
+                    { value: Math.max(onlineUsersCount, 0.4), color: "#10b981" },
+                    { value: Math.max(offlineWithSession, 0.4), color: "#f59e0b" },
+                  ]}
+                />
+              </div>
+              <div className="mt-3">
+                {isActiveUsersLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <h3 className="text-2xl font-black text-foreground tracking-tight">{totalActiveUsers}</h3>
+                )}
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <Badge className="bg-emerald-500/10 text-emerald-600 border-none text-[10px] gap-1 font-semibold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {onlineUsersCount} online
+                  </Badge>
+                  <Badge className="bg-amber-500/10 text-amber-600 border-none text-[10px] gap-1 font-semibold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    {offlineWithSession} offline · active session
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                  Connected to a hotspot now vs. holding an unused active voucher session.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-card border border-primary/40 rounded p-5 flex flex-col justify-between min-h-[150px]">
+              <div className="flex justify-between items-start w-full">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Data Usage</span>
+                  <PeriodBadge label="This Month" />
+                </div>
+                <MiniBarChart
+                  bars={[
+                    { value: Math.max(dataUsageTotals.rx, 1), color: "#10b981" },
+                    { value: Math.max(dataUsageTotals.tx, 1), color: "#f59e0b" },
+                  ]}
+                />
+              </div>
+              <div className="mt-3">
+                {isDataUsageLoading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  <h3 className="text-2xl font-black text-foreground tracking-tight">{formatBytes(dataUsageTotal)}</h3>
+                )}
+                <div className="flex items-center gap-3 mt-2 text-[11px] font-semibold">
+                  <span className="flex items-center gap-1 text-emerald-600">
+                    <ArrowDown className="w-3 h-3" /> {formatBytes(dataUsageTotals.rx)}
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-600">
+                    <ArrowUp className="w-3 h-3" /> {formatBytes(dataUsageTotals.tx)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">
+                  Download and upload totals across all branch routers.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -520,7 +693,7 @@ export default function Dashboard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate("/supports")}
+              onClick={() => navigate("/voucher-support")}
               className="text-xs text-primary hover:text-primary/80 font-semibold flex items-center gap-1 p-0 h-auto"
             >
               View Registry <ExternalLink className="w-3 h-3" />
@@ -598,14 +771,6 @@ function SystemInsightsPopover({ children, routerId }: { children: React.ReactNo
   const totalMemory = statusData?.system_resource?.['total-memory'] || 0;
   const freeMemory = statusData?.system_resource?.['free-memory'] || 0;
   const usedMemory = totalMemory - freeMemory;
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
 
   const memoryText = totalMemory ? `${formatBytes(usedMemory)} / ${formatBytes(totalMemory)}` : "–";
 

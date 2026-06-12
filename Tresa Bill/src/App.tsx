@@ -46,7 +46,15 @@ import SettingsPage from "./pages/Settings/Settings";
 import WalletManagementPage from "./pages/Settings/WalletManagement";
 import RouterLogsPage from "./pages/Settings/RouterLogs";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30 * 1000,
+      gcTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 const protectedElement = (element: React.ReactNode) => (
   <ProtectedRoute>{element}</ProtectedRoute>

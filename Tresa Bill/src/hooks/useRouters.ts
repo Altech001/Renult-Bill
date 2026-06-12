@@ -103,6 +103,18 @@ export function useBranchActiveUsers(routers: RouterResponse[]) {
   });
 }
 
+// Aggregates live router status (interfaces, dhcp leases, etc.) across every router in a branch.
+export function useBranchRouterStatus(routers: RouterResponse[]) {
+  return useQueries({
+    queries: routers.map((router) => ({
+      queryKey: ["routerStatus", router.id],
+      queryFn: () => renultApi.routers.status(router.id),
+      refetchInterval: 15000,
+      retry: 1,
+    })),
+  });
+}
+
 export function useRouterVouchers(routerId: string) {
   return useQuery({
     queryKey: ["routerVouchers", routerId],
