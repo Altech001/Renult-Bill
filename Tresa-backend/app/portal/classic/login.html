@@ -2231,7 +2231,7 @@
       var paymentPollNetworkErrors = 0;
       var PAYMENT_POLL_INTERVAL_MS = 3000;
       var PAYMENT_POLL_MAX_ATTEMPTS = 60; // ~3 minutes
-      var PAYMENT_POLL_MAX_NETWORK_ERRORS = 5;
+      var PAYMENT_POLL_MAX_NETWORK_ERRORS = 10;
 
       function setPaySpinnerText(text) {
         var el = document.getElementById("paySpinnerText");
@@ -2321,8 +2321,9 @@
           xhr.timeout = 15000;
           xhr.onreadystatechange = function () {
             if (xhr.readyState !== 4) return;
+            if (xhr.status === 0) return; // network error - onerror/ontimeout handles scheduling
+            paymentPollNetworkErrors = 0;
             if (xhr.status === 200) {
-              paymentPollNetworkErrors = 0;
               try {
                 var response = JSON.parse(xhr.responseText);
                 var paymentStatus = String(response.status || "").toUpperCase();
@@ -2346,8 +2347,6 @@
               } catch (e) {
                 // Ignore parse errors and keep polling.
               }
-            } else {
-              paymentPollNetworkErrors++;
             }
             scheduleNext();
           };
@@ -2365,7 +2364,7 @@
         function scheduleNext() {
           if (paymentPollNetworkErrors >= PAYMENT_POLL_MAX_NETWORK_ERRORS) {
             failPayment(
-              "We're having trouble reaching the payment service. Please check your connection and try again.",
+              "We're having trouble reaching the payment service. If you already approved the payment, wait a moment and tap Find My Code.",
             );
             return;
           }
