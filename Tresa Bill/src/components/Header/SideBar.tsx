@@ -333,6 +333,18 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
     const active = isActive(item.path) || subActive;
     const isExpanded = expandedMenu === item.label;
     const iconClassName = `shrink-0 ${active ? "text-primary" : item.iconColor || "text-muted-foreground"}`;
+    const routerAvailability =
+      monitoring?.online && monitoring.online > 0
+        ? "online"
+        : monitoring?.offline && monitoring.offline > 0
+          ? "offline"
+          : "unknown";
+    const routerBadgeColor =
+      routerAvailability === "online"
+        ? "bg-emerald-100 text-emerald-700"
+        : routerAvailability === "offline"
+          ? "bg-red-100 text-red-700"
+          : "bg-muted text-muted-foreground";
 
     const handleItemClick = () => {
       if (hasSubmenuItems) {
@@ -343,12 +355,10 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
 
     const routerCountBadge = item.label === "Mikrotiks" && monitoring && monitoring.total > 0 ? (
       <span
-        className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${monitoring.online > 0 ? "bg-emerald-100 text-emerald-600" : "bg-muted text-muted-foreground"
-          }`}
-        title={`${monitoring.online} of ${monitoring.total} routers online`}
+        className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${routerBadgeColor}`}
+        title={`${monitoring.online} online, ${monitoring.offline} offline`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full ${monitoring.online > 0 ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
-        {monitoring.online}/{monitoring.total}
+        {monitoring.total}
       </span>
     ) : null;
 
@@ -371,9 +381,11 @@ export default function SideBar({ isOpen, onClose }: SideBarProps) {
             {item.icon}
             {item.label === "Mikrotiks" && monitoring && monitoring.total > 0 && (
               <span
-                className={`absolute top-1.5 right-1.5 h-2 w-2 rounded-full border border-white ${monitoring.online > 0 ? "bg-emerald-500" : "bg-muted-foreground/50"
-                  }`}
-              />
+                className={`absolute right-0 top-0 inline-flex min-w-4 items-center justify-center rounded-full border border-white px-1 text-[9px] font-bold leading-4 ${routerBadgeColor}`}
+                title={`${monitoring.online} online, ${monitoring.offline} offline`}
+              >
+                {monitoring.total}
+              </span>
             )}
           </span>
         ) : (

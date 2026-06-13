@@ -6,11 +6,43 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { usePhoneVerifed } from "@/hooks/usePhoneVerifed";
 import { useBranchVouchers, useVoucherSupportSummary } from "@/hooks/useRouters";
-import { voucherUiStatus } from "@/lib/voucherStatus";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Search, Ticket, TrendingUp, Wifi } from "lucide-react";
+import { voucherUiStatus } from "@/lib/voucherStatus";
+import { ChevronLeft, ChevronRight, Loader2, Search, Ticket, TrendingUp, Wifi } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+function normalizeUgandanPhone(value: string): string | null {
+  const digits = value.replace(/\D/g, "");
+  if (/^2567\d{8}$/.test(digits)) return `+${digits}`;
+  if (/^07\d{8}$/.test(digits)) return `+256${digits.slice(1)}`;
+  if (/^7\d{8}$/.test(digits)) return `+256${digits}`;
+  return null;
+}
+
+function VerifiedPhoneCell({ phone }: { phone: string }) {
+  const normalizedPhone = normalizeUgandanPhone(phone);
+  const verification = usePhoneVerifed(normalizedPhone);
+  const identityName = verification.data?.success ? verification.data.identityname.trim() : "";
+
+  return (
+    <TableCell className="text-xs">
+      <div className="font-mono">{phone}</div>
+      {verification.isFetching && (
+        <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Verifying...
+        </div>
+      )}
+      {identityName && (
+        <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+          <span className="break-words font-bold">{identityName}</span>
+        </div>
+      )}
+    </TableCell>
+  );
+}
 
 export default function SupportsIndex() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
@@ -72,13 +104,13 @@ export default function SupportsIndex() {
 
   return (
     <div className={cn("min-h-screen bg-background transition-all duration-300", sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[280px]")}>
-      <SEO title="Voucher Support" />
+      <SEO title="Voucher Help Desk" />
       <AppHeader />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 space-y-5">
         <div>
-          {/* <h1 className="text-xl font-bold">Voucher Support</h1> */}
-          {/* <p className="text-sm text-muted-foreground mt-1">Find purchased vouchers by code, phone number, or payment reference.</p> */}
-        </div> 
+          <h1 className="text-xl font-bold">Voucher Help Desk</h1>
+          <p className="text-sm text-muted-foreground mt-1">Find purchased vouchers by code, phone number, or payment reference.</p>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border border-primary/30 rounded shadow-none"><CardContent className="p-4 flex justify-between"><div><p className="text-[12px]  font-bold text-muted-foreground">Total vouchers</p><p className="text-2xl font-black mt-1">{summary?.total_vouchers ?? vouchers.length}</p></div><Ticket className="w-8 h-8 text-primary/40" /></CardContent></Card>
@@ -113,7 +145,7 @@ export default function SupportsIndex() {
                   {vouchers.map((voucher) => (
                     <TableRow key={voucher.code}>
                       <TableCell className="font-mono text-xs font-bold text-primary">{voucher.code}</TableCell>
-                      <TableCell className="text-xs">{voucher.phone}</TableCell>
+                      <VerifiedPhoneCell phone={voucher.phone} />
                       <TableCell className="text-xs">{voucher.packageName}</TableCell>
                       <TableCell className="text-xs font-bold">UGX {voucher.amount.toLocaleString()}</TableCell>
                       <TableCell className="font-mono text-[11px]">{voucher.reference}</TableCell>
