@@ -2228,8 +2228,10 @@
       var payActionType = "";
       var paymentPollTimer = null;
       var paymentPollAttempts = 0;
+      var paymentPollNetworkErrors = 0;
       var PAYMENT_POLL_INTERVAL_MS = 3000;
       var PAYMENT_POLL_MAX_ATTEMPTS = 60; // ~3 minutes
+      var PAYMENT_POLL_MAX_NETWORK_ERRORS = 5;
 
       function setPaySpinnerText(text) {
         var el = document.getElementById("paySpinnerText");
@@ -2296,6 +2298,7 @@
           paymentPollTimer = null;
         }
         paymentPollAttempts = 0;
+        paymentPollNetworkErrors = 0;
       }
 
       function pollPaymentStatus(reference) {
@@ -2319,34 +2322,53 @@
           xhr.onreadystatechange = function () {
             if (xhr.readyState !== 4) return;
             if (xhr.status === 200) {
+              paymentPollNetworkErrors = 0;
               try {
                 var response = JSON.parse(xhr.responseText);
+                var paymentStatus = String(response.status || "").toUpperCase();
                 if (
-                  response.status === "SUCCESS" &&
+                  paymentStatus === "SUCCESS" &&
                   response.voucher &&
                   response.voucher.voucher_code
                 ) {
                   completePayment(response.voucher.voucher_code);
                   return;
                 }
-                if (response.status === "FAILED") {
+                if (paymentStatus === "FAILED") {
                   failPayment(
                     response.message || "The payment was not completed.",
                   );
                   return;
                 }
+                if (response.message) {
+                  setPaySpinnerText(response.message);
+                }
               } catch (e) {
                 // Ignore parse errors and keep polling.
               }
+            } else {
+              paymentPollNetworkErrors++;
             }
             scheduleNext();
           };
-          xhr.ontimeout = scheduleNext;
-          xhr.onerror = scheduleNext;
+          xhr.ontimeout = function () {
+            paymentPollNetworkErrors++;
+            scheduleNext();
+          };
+          xhr.onerror = function () {
+            paymentPollNetworkErrors++;
+            scheduleNext();
+          };
           xhr.send();
         }
 
         function scheduleNext() {
+          if (paymentPollNetworkErrors >= PAYMENT_POLL_MAX_NETWORK_ERRORS) {
+            failPayment(
+              "We're having trouble reaching the payment service. Please check your connection and try again.",
+            );
+            return;
+          }
           paymentPollAttempts++;
           if (paymentPollAttempts >= PAYMENT_POLL_MAX_ATTEMPTS) {
             failPayment(
