@@ -60,6 +60,24 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useBranchVouchers, useRouterActiveUsers, useRouters } from "@/hooks/useRouters";
 import { voucherUiStatus } from "@/lib/voucherStatus";
+import { usePhoneVerifed } from "@/hooks/usePhoneVerifed";
+
+// ── Ugandan Phone Normalization & Verification Component ───────
+function normalizeUgandanPhone(phone: string): string | null {
+    if (!phone) return null;
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("256") && digits.length === 12) return `+${digits}`;
+    if (digits.startsWith("0") && digits.length === 10) return `+256${digits.substring(1)}`;
+    if (/^(7|3)\d{8}$/.test(digits)) return `+256${digits}`;
+    return null;
+}
+
+export function VerifiedCustomerName({ phone, fallback }: { phone: string; fallback: string }) {
+    const normalized = normalizeUgandanPhone(phone);
+    const { data: verification } = usePhoneVerifed(normalized);
+    const verifiedName = verification?.success ? verification.identityname.trim() : "";
+    return <span>{verifiedName || fallback}</span>;
+}
 
 // ── Sparkline SVG helper ─────────────────────────────────────────
 function Sparkline({ data, color, height = 36 }: { data: number[]; color: string; height?: number }) {
@@ -569,7 +587,7 @@ export default function SalesIndex() {
                             {/* Today Sales */}
                             <Card className="rounded-lg bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all flex flex-col min-h-[140px]">
                                 <CardHeader className="pb-1 pt-3 px-3 sm:px-4 sm:pt-4">
-                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Revenue Today</span>
+                                    <span className="text-[12px] sm:text-xs font-bold  text-muted-foreground">Today</span>
                                     <CardTitle className="text-lg sm:text-2xl font-black mt-0.5 text-foreground leading-tight">
                                         {formatUGX(kpis.todaySales)}
                                     </CardTitle>
@@ -594,7 +612,7 @@ export default function SalesIndex() {
                             {/* Yesterday Sales */}
                             <Card className="rounded-lg bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all flex flex-col min-h-[140px]">
                                 <CardHeader className="pb-1 pt-3 px-3 sm:px-4 sm:pt-4">
-                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Revenue Yesterday</span>
+                                    <span className="text-[12px] sm:text-xs font-bold  text-muted-foreground">Yesterday</span>
                                     <CardTitle className="text-lg sm:text-2xl font-black mt-0.5 text-foreground leading-tight">
                                         {formatUGX(kpis.yesterdaySales)}
                                     </CardTitle>
@@ -619,7 +637,7 @@ export default function SalesIndex() {
                             {/* This Week */}
                             <Card className="rounded-lg bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all flex flex-col min-h-[140px]">
                                 <CardHeader className="pb-1 pt-3 px-3 sm:px-4 sm:pt-4">
-                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Revenue This Week</span>
+                                    <span className="text-[12px] sm:text-xs font-bold  text-muted-foreground">This Week</span>
                                     <CardTitle className="text-lg sm:text-2xl font-black mt-0.5 text-foreground leading-tight">
                                         {formatUGX(kpis.weekSales)}
                                     </CardTitle>
@@ -644,7 +662,7 @@ export default function SalesIndex() {
                             {/* This Month */}
                             <Card className="rounded-lg bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all flex flex-col min-h-[140px]">
                                 <CardHeader className="pb-1 pt-3 px-3 sm:px-4 sm:pt-4">
-                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">Revenue This Month</span>
+                                    <span className="text-[12px] sm:text-xs font-bold  text-muted-foreground">This Month</span>
                                     <CardTitle className="text-lg sm:text-2xl font-black mt-0.5 text-foreground leading-tight">
                                         {formatUGX(kpis.monthSales)}
                                     </CardTitle>
@@ -866,7 +884,9 @@ export default function SalesIndex() {
                                                                         className="font-semibold text-primary hover:underline text-left flex flex-col focus:outline-none group/user"
                                                                         title="View purchase history"
                                                                     >
-                                                                        <span className="font-bold group-hover/user:underline">{record.buyerName || "Unknown Customer"}</span>
+                                                                        <span className="font-bold group-hover/user:underline">
+                                                                            <VerifiedCustomerName phone={record.phone} fallback={record.buyerName || "Unknown Customer"} />
+                                                                        </span>
                                                                         <span className="text-[10px] text-muted-foreground font-mono">{record.phone}</span>
                                                                     </button>
                                                                 ) : (

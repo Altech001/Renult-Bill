@@ -22,6 +22,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { VerifiedCustomerName } from ".";
 
 interface SalesRecord {
     id: string;
@@ -178,15 +179,15 @@ export default function CustomerDetail() {
                 </Button>
 
                 {/* Customer Header Card */}
-                <Card className="border border-border/60 rounded-lg overflow-hidden">
+                <Card className="border border-border/0 rounded overflow-hidden">
                     <div className="h-1.5 bg-gradient-to-r from-primary via-blue-500 to-cyan-400" />
                     <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0 ring-2 ring-primary/20">
-                            <User className="w-6 h-6 text-primary" />
-                        </div>
                         <div>
                             <CardTitle className="text-base font-bold text-foreground">
-                                {purchases[0]?.buyerName ?? `Customer ${phone}`}
+                                <VerifiedCustomerName
+                                    phone={phone}
+                                    fallback={`Customer ${phone}`}
+                                />
                             </CardTitle>
                             <p className="text-xs text-muted-foreground font-mono mt-0.5">{phone}</p>
                         </div>
@@ -224,12 +225,12 @@ export default function CustomerDetail() {
                         <Card
                             key={stat.label}
                             className={cn(
-                                "rounded-lg border border-border/60 border-l-2 p-4 flex flex-col gap-2",
+                                "rounded border border-border/40 border-l-2 p-4 flex flex-col gap-2",
                                 stat.accent
                             )}
                         >
                             <div className="flex items-center justify-between">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                <p className="text-[12px] font-bold  text-muted-foreground">
                                     {stat.label}
                                 </p>
                                 {stat.icon}
@@ -240,7 +241,7 @@ export default function CustomerDetail() {
                 </div>
 
                 {/* Purchase Timeline */}
-                <Card className="border border-border/60 rounded-lg">
+                <Card className="border border-border/40 rounded">
                     <CardHeader className="pb-3 border-b border-border/40">
                         <CardTitle className="text-sm font-bold text-foreground">Purchase Timeline</CardTitle>
                         <p className="text-xs text-muted-foreground">
@@ -251,7 +252,7 @@ export default function CustomerDetail() {
                         {isFetching ? (
                             <div className="flex flex-col gap-3">
                                 {[1, 2, 3].map((i) => (
-                                    <div key={i} className="h-20 rounded-md bg-muted/40 animate-pulse" />
+                                    <div key={i} className="h-20 rounded bg-muted/40 animate-pulse" />
                                 ))}
                             </div>
                         ) : purchases.length === 0 ? (
@@ -265,13 +266,13 @@ export default function CustomerDetail() {
                                 {purchases.map((purchase) => (
                                     <div key={purchase.id} className="relative group">
                                         {/* Timeline node */}
-                                        <StatusDot status={purchase.status} />
+                                        {/* <StatusDot status={purchase.status} /> */}
                                         <span className="absolute -left-[22px] top-1">
                                             <StatusDot status={purchase.status} />
                                         </span>
 
                                         {/* Card */}
-                                        <div className="ml-2 p-3 rounded-lg bg-muted/20 border border-border/30 hover:bg-muted/40 transition-colors space-y-2">
+                                        <div className="ml-3 p-2 rounded border border-border/40 cursor-alias transition-colors space-y-2">
                                             {/* Top row */}
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2">
