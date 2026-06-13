@@ -56,4 +56,9 @@ class BranchWalletTransaction(SQLModel, table=True):
     transaction_type: str = Field(index=True)  # DEPOSIT | WITHDRAWAL
     reference: Optional[str] = Field(default=None, index=True)
     status: str = Field(default="COMPLETED", index=True)
+    recipient_phone: Optional[str] = Field(default=None)
+    gateway_reference: Optional[str] = Field(default=None, index=True)
+    gateway_status: Optional[str] = Field(default=None)
+    failure_reason: Optional[str] = Field(default=None)
+    last_checked_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)

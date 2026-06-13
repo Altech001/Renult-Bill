@@ -13,7 +13,7 @@ from sqlmodel import select
 from app.api.deps import CurrentUser
 from app.db.session import SessionDep
 from app.models.branch import Branch
-from app.models.branch_wallet import BranchWallet
+from app.models.branch_wallet import BranchWallet, BranchWalletTransaction
 from app.models.withdrawal_challenge import WithdrawalChallenge
 from app.schemas.auth import MessageResponse
 from app.schemas.wallet import (
@@ -28,8 +28,10 @@ from app.schemas.wallet import (
     WithdrawalConfirmRequest,
     WithdrawalConfirmResponse,
 )
+from app.services import renult_pay
 from app.services import wallet as wallet_svc
 from app.services.email import send_withdrawal_code_email, send_withdrawal_receipt_email
+from app.services.portal import gateway_phone
 from app.services.security import hash_code
 from app.services.telegram import (
     send_user_event,
@@ -38,6 +40,10 @@ from app.services.telegram import (
 )
 
 router = APIRouter(prefix="/wallets", tags=["Wallets"])
+
+# Minimum time between calls to the gateway's send-money status endpoint for
+# a single withdrawal, mirroring `portal.PAYMENT_VERIFY_INTERVAL`.
+WITHDRAWAL_VERIFY_INTERVAL = timedelta(seconds=2)
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -77,6 +83,9 @@ def _txn_response(t) -> WalletTransactionResponse:
         transaction_type=t.transaction_type.lower(),
         reference=t.reference,
         status=t.status,
+        recipient_phone=t.recipient_phone,
+        gateway_status=t.gateway_status,
+        failure_reason=t.failure_reason,
         created_at=t.created_at,
     )
 
@@ -149,6 +158,14 @@ def request_withdrawal_challenge(
     if wallet.balance < payload.amount:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Insufficient wallet balance")
 
+    net_amount = wallet_svc.withdrawal_net_amount(payload.amount)
+    if net_amount < wallet_svc.WITHDRAW_MIN_AMOUNT or net_amount > wallet_svc.WITHDRAW_MAX_AMOUNT:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Withdrawal amount must result in a net payout between "
+            f"UGX {wallet_svc.WITHDRAW_MIN_AMOUNT:,} and UGX {wallet_svc.WITHDRAW_MAX_AMOUNT:,}",
+        )
+
     recent_count = session.exec(
         select(func.count(WithdrawalChallenge.id))
         .where(WithdrawalChallenge.user_id == user.id)
@@ -212,7 +229,31 @@ def confirm_withdrawal(
 
     challenge.used_at = datetime.utcnow()
     session.add(challenge)
+
     wallet = wallet_svc.get_wallet_for_branch(session, branch_id)
+    # Lock the wallet and confirm it can still cover this withdrawal before
+    # any real money moves.
+    wallet_svc.validate_withdrawal(session, wallet.id, challenge.amount)
+
+    try:
+        gateway_response = renult_pay.send_money(
+            amount=wallet_svc.withdrawal_net_amount(challenge.amount),
+            phone_number=gateway_phone(challenge.recipient_phone),
+            reference=challenge.id,
+            description=f"Withdrawal payout - {branch.name}"[:255],
+        )
+    except renult_pay.RenultPayError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Payment could not be sent: {exc}")
+
+    gateway_status = renult_pay.extract_status(gateway_response)
+    normalized_status = renult_pay.normalize_status(gateway_status)
+    if normalized_status == "FAILED":
+        session.rollback()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Payment gateway declined this withdrawal")
+
+    gateway_reference = renult_pay.extract_collection_uuid(gateway_response) or str(challenge.id)
+
     txn, updated_wallet = wallet_svc.withdraw(
         session,
         wallet.id,
@@ -220,6 +261,15 @@ def confirm_withdrawal(
         user.id,
         challenge.recipient_phone,
     )
+
+    txn.recipient_phone = challenge.recipient_phone
+    txn.gateway_reference = gateway_reference
+    txn.gateway_status = gateway_status
+    txn.status = "PROCESSING" if normalized_status == "PENDING" else "COMPLETED"
+    txn.last_checked_at = datetime.utcnow()
+    session.add(txn)
+    session.commit()
+    session.refresh(txn)
 
     receipt_email_sent = True
     try:
@@ -266,6 +316,57 @@ def confirm_withdrawal(
         wallet=_wallet_response(updated_wallet, branch.name),
         receipt_email_sent=receipt_email_sent,
     )
+
+
+@router.get("/branch/{branch_id}/withdrawals/{transaction_id}/status", response_model=WalletTransactionResponse)
+def withdrawal_status(
+    branch_id: UUID,
+    transaction_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+) -> WalletTransactionResponse:
+    """Re-check a processing withdrawal's payout status with the gateway."""
+    _assert_branch_owner(session, branch_id, user.id)
+    txn = session.exec(
+        select(BranchWalletTransaction)
+        .where(BranchWalletTransaction.id == transaction_id)
+        .where(BranchWalletTransaction.branch_id == branch_id)
+        .where(BranchWalletTransaction.transaction_type == "WITHDRAWAL")
+    ).first()
+    if not txn:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Withdrawal transaction not found")
+
+    if txn.status != "PROCESSING" or not txn.gateway_reference:
+        return _txn_response(txn)
+
+    now = datetime.utcnow()
+    if txn.last_checked_at and now - txn.last_checked_at < WITHDRAWAL_VERIFY_INTERVAL:
+        return _txn_response(txn)
+
+    try:
+        gateway_response = renult_pay.get_send_money_status(txn.gateway_reference)
+    except renult_pay.RenultPayError:
+        txn.last_checked_at = now
+        session.add(txn)
+        session.commit()
+        session.refresh(txn)
+        return _txn_response(txn)
+
+    gateway_status = renult_pay.extract_status(gateway_response)
+    normalized_status = renult_pay.normalize_status(gateway_status)
+    txn.gateway_status = gateway_status
+    txn.last_checked_at = now
+
+    if normalized_status == "SUCCESS":
+        txn.status = "COMPLETED"
+    elif normalized_status == "FAILED":
+        txn.status = "FAILED"
+        txn.failure_reason = "The payment gateway reported this payout failed. Contact support."
+
+    session.add(txn)
+    session.commit()
+    session.refresh(txn)
+    return _txn_response(txn)
 
 
 # ── Platform admin endpoints ────────────────────────────────────────

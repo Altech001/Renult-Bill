@@ -55,6 +55,9 @@ class WalletTransactionResponse(BaseModel):
     transaction_type: str
     reference: Optional[str]
     status: str
+    recipient_phone: Optional[str] = None
+    gateway_status: Optional[str] = None
+    failure_reason: Optional[str] = None
     created_at: datetime
 
 

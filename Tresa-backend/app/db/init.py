@@ -63,6 +63,7 @@ def init_db() -> None:
     _ensure_staff_columns()
     _ensure_router_columns()
     _ensure_portal_ad_columns()
+    _ensure_branch_wallet_transaction_columns()
 
     # Seed ticket categories
     with Session(engine) as session:
@@ -179,3 +180,25 @@ def _ensure_portal_ad_columns() -> None:
         for name, sql_type in column_types.items():
             if name not in columns:
                 conn.execute(sa.text(f"ALTER TABLE portalad ADD COLUMN {name} {sql_type}"))
+
+
+def _ensure_branch_wallet_transaction_columns() -> None:
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("branchwallettransaction"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("branchwallettransaction")}
+    column_types = {
+        "recipient_phone": "VARCHAR",
+        "gateway_reference": "VARCHAR",
+        "gateway_status": "VARCHAR",
+        "failure_reason": "VARCHAR",
+        "last_checked_at": "TIMESTAMP",
+    }
+    with engine.begin() as conn:
+        for name, sql_type in column_types.items():
+            if name not in columns:
+                conn.execute(sa.text(f"ALTER TABLE branchwallettransaction ADD COLUMN {name} {sql_type}"))
+        conn.execute(sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_branchwallettransaction_gateway_reference "
+            "ON branchwallettransaction (gateway_reference)"
+        ))

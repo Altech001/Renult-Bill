@@ -23,6 +23,10 @@ from app.models.user import User
 DEPOSIT_FEE_RATE = 0.01   # 1 %
 WITHDRAW_FEE_RATE = 0.02  # 2 %
 
+# The payment gateway only accepts disbursements within this range (UGX).
+WITHDRAW_MIN_AMOUNT = 500
+WITHDRAW_MAX_AMOUNT = 10_000_000
+
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -41,6 +45,30 @@ def _lock_wallet(session: Session, wallet_id: UUID) -> BranchWallet:
 def _calc_fee(amount: int, rate: float) -> int:
     """Always round fee UP so the platform never loses a fractional cent."""
     return math.ceil(amount * rate)
+
+
+def withdrawal_net_amount(amount: int) -> int:
+    """The amount the recipient actually receives after the withdrawal fee."""
+    return amount - _calc_fee(amount, WITHDRAW_FEE_RATE)
+
+
+def validate_withdrawal(session: Session, wallet_id: UUID, amount: int) -> BranchWallet:
+    """Lock the wallet and check it can cover this withdrawal, without mutating it.
+
+    Used to pre-flight a withdrawal before money is sent through the payment
+    gateway, so a frozen wallet or insufficient balance is caught before any
+    real money moves. The row-level lock is held for the rest of the
+    transaction, so a subsequent `withdraw()` call sees a consistent balance.
+    """
+    wallet = _lock_wallet(session, wallet_id)
+    if wallet.is_frozen:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Wallet is frozen")
+    if wallet.balance < amount:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Insufficient balance ({wallet.balance}) for withdrawal ({amount})",
+        )
+    return wallet
 
 
 def _get_branch_name(session: Session, branch_id: UUID) -> str:

@@ -65,7 +65,7 @@ def normalize_phone(phone_number: str) -> str:
     return phone
 
 
-def _gateway_phone(phone_number: str) -> str:
+def gateway_phone(phone_number: str) -> str:
     """E.164 phone number for the Renult Pay gateway, e.g. "+256700000000"."""
     return f"+{normalize_phone(phone_number)}"
 
@@ -460,7 +460,7 @@ def initiate_portal_payment(
     try:
         response = renult_pay.initialize_collection(
             amount=amount,
-            phone_number=_gateway_phone(normalized_phone),
+            phone_number=gateway_phone(normalized_phone),
             reference=payment.reference,
             description=f"{package['profile']} voucher on {router.name}",
         )

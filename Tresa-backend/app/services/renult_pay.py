@@ -91,7 +91,10 @@ def _request(method: str, path: str, json_body: dict[str, Any] | None = None) ->
         data = {}
 
     if response.status_code >= 400:
-        message = data.get("detail") or data.get("message") or response.text
+        detail = data.get("detail")
+        if isinstance(detail, dict):
+            detail = detail.get("message") or detail
+        message = detail or data.get("message") or response.text
         raise RenultPayError(str(message or "Payment gateway rejected the request"))
 
     return data
@@ -118,6 +121,29 @@ def initialize_collection(
 def verify_collection(collection_uuid: str) -> dict[str, Any]:
     """Check the current status of a previously initialized collection."""
     return _request("GET", f"/v1/pay/verify/{collection_uuid}")
+
+
+def send_money(
+    amount: int,
+    phone_number: str,
+    reference: UUID,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Disburse money to a recipient's mobile money wallet. `phone_number` must be E.164 (+256...)."""
+    payload: dict[str, Any] = {
+        "amount": amount,
+        "phone_number": phone_number,
+        "country": "UG",
+        "reference": str(reference),
+    }
+    if description:
+        payload["description"] = description[:255]
+    return _request("POST", "/send-money", payload)
+
+
+def get_send_money_status(reference: str) -> dict[str, Any]:
+    """Check the current status of a previously requested disbursement."""
+    return _request("GET", f"/send-money/{reference}")
 
 
 def extract_status(payload: dict[str, Any]) -> str | None:
