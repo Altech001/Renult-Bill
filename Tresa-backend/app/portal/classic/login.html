@@ -2047,6 +2047,17 @@
         return value && value.indexOf("$(") === -1;
       }
 
+      function isCredentialError(message) {
+        var normalized = String(message || "")
+          .trim()
+          .toLowerCase();
+        return (
+          normalized === "invalid username or password" ||
+          normalized === "invalid username/password" ||
+          normalized === "invalid user name or password"
+        );
+      }
+
       function setVoucherStorage(key, value) {
         try {
           localStorage.setItem(key, value);
@@ -2638,7 +2649,7 @@
           "success",
           "Payment confirmed",
           payActionType === "self"
-            ? "Your voucher is ready. Tap Connect Now to go online."
+            ? "Your voucher is ready. Connecting you automatically..."
             : "The voucher is ready. Keep this code for the person who will use it.",
           reference,
         );
@@ -2650,6 +2661,11 @@
         document.getElementById("payRetryButton").style.display = "none";
         document.getElementById("paySuccessAction").textContent =
           payActionType === "self" ? "Connect Now" : "Done";
+        if (payActionType === "self") {
+          setTimeout(function () {
+            useCompletedVoucher();
+          }, 600);
+        }
       }
 
       function useCompletedVoucher() {
@@ -2829,7 +2845,13 @@
           trialLink.style.display = "none";
         }
 
-        if (routerError && attemptedVoucher && attemptedMode === "empty") {
+        if (
+          routerError &&
+          attemptedVoucher &&
+          attemptedMode === "empty" &&
+          isCredentialError(routerError.textContent)
+        ) {
+          routerError.style.display = "none";
           setVoucherCredentials(attemptedVoucher, "username");
           rememberVoucherAttempt(attemptedVoucher, "username");
           setTimeout(function () {
@@ -2837,7 +2859,7 @@
           }, 250);
           return;
         }
-        if (routerError && attemptedMode === "username") clearVoucherAttempt();
+        if (routerError) clearVoucherAttempt();
         loadPortalConfig();
         loadPackages();
       });
