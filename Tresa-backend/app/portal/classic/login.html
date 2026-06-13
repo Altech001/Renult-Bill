@@ -702,6 +702,25 @@
         height: 32px;
       }
 
+      .powered-by {
+        padding: 22px 16px 4px;
+        text-align: center;
+        color: var(--text-light);
+        font-size: 0.72rem;
+      }
+
+      .powered-by a {
+        color: var(--text-muted);
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .powered-by a:hover,
+      .powered-by a:focus {
+        color: var(--primary);
+        text-decoration: underline;
+      }
+
       /* ── Full-screen modals ── */
       .modal-overlay {
         position: fixed;
@@ -1077,6 +1096,102 @@
         text-align: center;
         padding: 24px 0;
         display: none;
+      }
+
+      .payment-state {
+        display: none;
+        padding: 20px 16px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        text-align: center;
+      }
+
+      .payment-state.show {
+        display: block;
+      }
+
+      .payment-state-icon {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 12px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--surface2);
+        color: var(--primary);
+        font-size: 1.45rem;
+        font-weight: 900;
+      }
+
+      .payment-state.processing .payment-state-icon {
+        background: var(--primary-pale);
+      }
+
+      .payment-state.success {
+        border-color: rgba(22, 163, 74, 0.35);
+        background: rgba(22, 163, 74, 0.06);
+      }
+
+      .payment-state.success .payment-state-icon {
+        background: #16a34a;
+        color: #fff;
+      }
+
+      .payment-state.failed {
+        border-color: rgba(239, 68, 68, 0.35);
+        background: rgba(239, 68, 68, 0.06);
+      }
+
+      .payment-state.failed .payment-state-icon {
+        background: #ef4444;
+        color: #fff;
+      }
+
+      .payment-state-title {
+        color: var(--text);
+        font-size: 1rem;
+        font-weight: 800;
+      }
+
+      .payment-state-message {
+        margin-top: 6px;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+
+      .payment-state-reference {
+        margin-top: 10px;
+        color: var(--text-light);
+        font-size: 0.7rem;
+        overflow-wrap: anywhere;
+      }
+
+      .payment-state-actions {
+        display: none;
+        margin-top: 16px;
+      }
+
+      .payment-state-actions.show {
+        display: block;
+      }
+
+      .payment-voucher-code {
+        display: none;
+        margin: 14px 0 0;
+        padding: 12px;
+        border: 1px dashed rgba(22, 163, 74, 0.5);
+        background: var(--surface);
+        color: #15803d;
+        font-size: 1.15rem;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        overflow-wrap: anywhere;
+      }
+
+      .payment-voucher-code.show {
+        display: block;
       }
 
       .spinner {
@@ -1636,6 +1751,17 @@
         <div class="package-list" id="packageListHome"></div>
       </div>
 
+      <div class="powered-by">
+        Powered by
+        <a
+          href="https://app.renult.xyz/router"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Renult Techs
+        </a>
+      </div>
+
       <div class="page-bottom"></div>
     </div>
     <!-- /app-wrap -->
@@ -1702,7 +1828,7 @@
     <div class="modal-overlay" id="paymentOverlay"></div>
     <div class="modal-sheet" id="paymentModal">
       <div class="modal-header">
-        <button class="modal-close-btn" onclick="closeModal('paymentModal')">
+        <button class="modal-close-btn" onclick="cancelPayment()">
           &times;
         </button>
         <h4>Package <span id="payTitle"></span></h4>
@@ -1744,19 +1870,36 @@
         <input type="hidden" id="payAmount" />
         <input type="hidden" id="paySpeedType" />
 
-        <div id="paySpinner" class="spinner-wrap">
-          <div class="spinner"></div>
-          <p
-            id="paySpinnerText"
-            style="
-              font-size: 0.8rem;
-              color: var(--text-muted);
-              margin-top: 10px;
-            "
-          >
-            Check your phone for a Mobile Money prompt and enter your PIN to
-            approve. Please don't close this page.
-          </p>
+        <div
+          id="payState"
+          class="payment-state"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="payment-state-icon" id="payStateIcon"></div>
+          <div class="payment-state-title" id="payStateTitle"></div>
+          <p class="payment-state-message" id="payStateMessage"></p>
+          <div class="payment-state-reference" id="payStateReference"></div>
+          <div class="payment-voucher-code" id="payVoucherCode"></div>
+          <div class="payment-state-actions" id="payStateActions">
+            <button
+              class="btn btn-success"
+              id="paySuccessAction"
+              onclick="useCompletedVoucher()"
+            >
+              Connect Now
+            </button>
+            <button
+              class="btn btn-primary"
+              id="payRetryButton"
+              onclick="retryPayment()"
+            >
+              Try Again
+            </button>
+            <button class="btn btn-outline" onclick="cancelPayment()">
+              Close
+            </button>
+          </div>
         </div>
 
         <div id="payButtons">
@@ -1878,8 +2021,9 @@
         if (overlay) overlay.classList.remove("open");
         document.body.style.overflow = "";
         if (id === "paymentModal") {
+          paymentRequestToken++;
           stopPaymentPolling();
-          document.getElementById("paySpinner").style.display = "none";
+          resetPaymentState();
           document.getElementById("payButtons").style.display = "block";
           payActionType = "";
         }
@@ -2205,7 +2349,7 @@
         document.getElementById("payPhone").value = "";
         document.getElementById("payPhoneErr").textContent = "";
         document.getElementById("payButtons").style.display = "block";
-        document.getElementById("paySpinner").style.display = "none";
+        resetPaymentState();
         // Close packages modal if open
         closeModal("packagesModal");
         setTimeout(function () {
@@ -2225,17 +2369,54 @@
         return p;
       }
 
-      var payActionType = "";
+      var completedVoucher = "";
       var paymentPollTimer = null;
       var paymentPollAttempts = 0;
       var paymentPollNetworkErrors = 0;
+      var paymentRequestToken = 0;
       var PAYMENT_POLL_INTERVAL_MS = 3000;
       var PAYMENT_POLL_MAX_ATTEMPTS = 60; // ~3 minutes
       var PAYMENT_POLL_MAX_NETWORK_ERRORS = 10;
 
-      function setPaySpinnerText(text) {
-        var el = document.getElementById("paySpinnerText");
-        if (el) el.textContent = text;
+      function setPaymentState(kind, title, message, reference) {
+        var state = document.getElementById("payState");
+        var icon = document.getElementById("payStateIcon");
+        state.className = "payment-state show " + kind;
+        document.getElementById("payStateTitle").textContent = title;
+        document.getElementById("payStateMessage").textContent = message;
+        document.getElementById("payStateReference").textContent = reference
+          ? "Payment reference: " + reference
+          : "";
+        icon.innerHTML =
+          kind === "processing"
+            ? '<span class="spinner"></span>'
+            : kind === "success"
+              ? "&#10003;"
+              : "!";
+      }
+
+      function resetPaymentState() {
+        document.getElementById("payState").className = "payment-state";
+        document.getElementById("payStateTitle").textContent = "";
+        document.getElementById("payStateMessage").textContent = "";
+        document.getElementById("payStateReference").textContent = "";
+        document.getElementById("payStateActions").className =
+          "payment-state-actions";
+        document.getElementById("payVoucherCode").className =
+          "payment-voucher-code";
+        document.getElementById("payVoucherCode").textContent = "";
+        document.getElementById("paySuccessAction").style.display = "flex";
+        document.getElementById("payRetryButton").style.display = "flex";
+        completedVoucher = "";
+      }
+
+      function responseMessage(xhr, fallback) {
+        try {
+          var body = JSON.parse(xhr.responseText);
+          return body.message || body.detail || fallback;
+        } catch (e) {
+          return fallback;
+        }
       }
 
       function initiatePayment(type) {
@@ -2247,12 +2428,18 @@
         }
         document.getElementById("payPhoneErr").textContent = "";
         payActionType = type || "self";
+        stopPaymentPolling();
+        var requestToken = ++paymentRequestToken;
         document.getElementById("payButtons").style.display = "none";
-        setPaySpinnerText(
-          "Sending a payment prompt to your phone. This can take a few seconds...",
+        document.getElementById("payStateActions").className =
+          "payment-state-actions";
+        setPaymentState(
+          "processing",
+          "Sending payment prompt",
+          "Please keep this page open while we contact your Mobile Money provider.",
         );
-        document.getElementById("paySpinner").style.display = "block";
         var xhr = new XMLHttpRequest();
+        var handled = false;
         xhr.open(
           "POST",
           API_BASE + "/portal/" + encodeURIComponent(ROUTER_ID) + "/payments",
@@ -2261,12 +2448,30 @@
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.timeout = 30000;
         xhr.onreadystatechange = function () {
-          if (xhr.readyState !== 4) return;
-          if (xhr.status === 200) {
+          if (
+            xhr.readyState !== 4 ||
+            handled ||
+            requestToken !== paymentRequestToken
+          )
+            return;
+          if (xhr.status === 0) return;
+          handled = true;
+          if (xhr.status >= 200 && xhr.status < 300) {
             try {
               var response = JSON.parse(xhr.responseText);
-              if (response.reference && response.status !== "FAILED") {
-                pollPaymentStatus(response.reference);
+              var paymentStatus = String(
+                response.status || "",
+              ).toUpperCase();
+              if (
+                paymentStatus === "SUCCESS" &&
+                response.voucher &&
+                response.voucher.voucher_code
+              ) {
+                completePayment(response.voucher.voucher_code);
+                return;
+              }
+              if (response.reference && paymentStatus !== "FAILED") {
+                pollPaymentStatus(response.reference, requestToken);
                 return;
               }
               failPayment(response.message || "Payment could not be started.");
@@ -2274,11 +2479,25 @@
               failPayment("The payment service returned an invalid response.");
             }
           } else {
-            failPayment("Payment could not be started. Please try again.");
+            failPayment(
+              responseMessage(
+                xhr,
+                "Payment could not be started. Please try again.",
+              ),
+            );
           }
         };
         xhr.ontimeout = function () {
+          if (handled || requestToken !== paymentRequestToken) return;
+          handled = true;
           failPayment("The payment request timed out. Please try again.");
+        };
+        xhr.onerror = function () {
+          if (handled || requestToken !== paymentRequestToken) return;
+          handled = true;
+          failPayment(
+            "Unable to reach the payment service. Check your connection and try again.",
+          );
         };
         xhr.send(
           JSON.stringify({
@@ -2301,14 +2520,19 @@
         paymentPollNetworkErrors = 0;
       }
 
-      function pollPaymentStatus(reference) {
+      function pollPaymentStatus(reference, requestToken) {
         stopPaymentPolling();
-        setPaySpinnerText(
-          "Check your phone for a Mobile Money prompt and enter your PIN to approve. Please don't close this page.",
+        setPaymentState(
+          "processing",
+          "Approve on your phone",
+          "Check your phone for the Mobile Money prompt, enter your PIN, and wait here for confirmation.",
+          reference,
         );
 
         function checkOnce() {
+          if (requestToken !== paymentRequestToken) return;
           var xhr = new XMLHttpRequest();
+          var handled = false;
           xhr.open(
             "GET",
             API_BASE +
@@ -2319,11 +2543,25 @@
             true,
           );
           xhr.timeout = 15000;
+
+          function handleNetworkError() {
+            if (handled || requestToken !== paymentRequestToken) return;
+            handled = true;
+            paymentPollNetworkErrors++;
+            scheduleNext();
+          }
+
           xhr.onreadystatechange = function () {
-            if (xhr.readyState !== 4) return;
-            if (xhr.status === 0) return; // network error - onerror/ontimeout handles scheduling
-            paymentPollNetworkErrors = 0;
-            if (xhr.status === 200) {
+            if (
+              xhr.readyState !== 4 ||
+              handled ||
+              requestToken !== paymentRequestToken
+            )
+              return;
+            if (xhr.status === 0) return;
+            handled = true;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              paymentPollNetworkErrors = 0;
               try {
                 var response = JSON.parse(xhr.responseText);
                 var paymentStatus = String(response.status || "").toUpperCase();
@@ -2332,46 +2570,58 @@
                   response.voucher &&
                   response.voucher.voucher_code
                 ) {
-                  completePayment(response.voucher.voucher_code);
+                  completePayment(response.voucher.voucher_code, reference);
                   return;
                 }
                 if (paymentStatus === "FAILED") {
                   failPayment(
-                    response.message || "The payment was not completed.",
+                    response.message ||
+                      "The payment was declined or cancelled.",
+                    reference,
                   );
                   return;
                 }
                 if (response.message) {
-                  setPaySpinnerText(response.message);
+                  setPaymentState(
+                    "processing",
+                    "Waiting for confirmation",
+                    response.message,
+                    reference,
+                  );
                 }
               } catch (e) {
-                // Ignore parse errors and keep polling.
+                paymentPollNetworkErrors++;
               }
+            } else if (xhr.status >= 400 && xhr.status < 500) {
+              failPayment(
+                responseMessage(xhr, "This payment could not be verified."),
+                reference,
+              );
+              return;
+            } else {
+              paymentPollNetworkErrors++;
             }
             scheduleNext();
           };
-          xhr.ontimeout = function () {
-            paymentPollNetworkErrors++;
-            scheduleNext();
-          };
-          xhr.onerror = function () {
-            paymentPollNetworkErrors++;
-            scheduleNext();
-          };
+          xhr.ontimeout = handleNetworkError;
+          xhr.onerror = handleNetworkError;
           xhr.send();
         }
 
         function scheduleNext() {
+          if (requestToken !== paymentRequestToken) return;
           if (paymentPollNetworkErrors >= PAYMENT_POLL_MAX_NETWORK_ERRORS) {
             failPayment(
-              "We're having trouble reaching the payment service. If you already approved the payment, wait a moment and tap Find My Code.",
+              "We cannot reach the payment service right now. If money was deducted, use Find My Voucher in a moment.",
+              reference,
             );
             return;
           }
           paymentPollAttempts++;
           if (paymentPollAttempts >= PAYMENT_POLL_MAX_ATTEMPTS) {
             failPayment(
-              "We couldn't confirm your payment yet. If money was deducted, tap Find My Code in a moment or contact support.",
+              "Confirmation is taking longer than expected. If money was deducted, use Find My Voucher or contact support.",
+              reference,
             );
             return;
           }
@@ -2381,11 +2631,31 @@
         checkOnce();
       }
 
-      function completePayment(voucher) {
+      function completePayment(voucher, reference) {
         stopPaymentPolling();
+        completedVoucher = voucher;
+        setPaymentState(
+          "success",
+          "Payment confirmed",
+          payActionType === "self"
+            ? "Your voucher is ready. Tap Connect Now to go online."
+            : "The voucher is ready. Keep this code for the person who will use it.",
+          reference,
+        );
+        var voucherCode = document.getElementById("payVoucherCode");
+        voucherCode.textContent = voucher;
+        voucherCode.className = "payment-voucher-code show";
+        document.getElementById("payStateActions").className =
+          "payment-state-actions show";
+        document.getElementById("payRetryButton").style.display = "none";
+        document.getElementById("paySuccessAction").textContent =
+          payActionType === "self" ? "Connect Now" : "Done";
+      }
+
+      function useCompletedVoucher() {
+        if (!completedVoucher) return;
+        var voucher = completedVoucher;
         var actionType = payActionType;
-        document.getElementById("paySpinner").style.display = "none";
-        document.getElementById("payButtons").style.display = "block";
         closeModal("paymentModal");
         if (actionType === "self") {
           setVoucherCredentials(voucher, "empty");
@@ -2399,12 +2669,30 @@
         payActionType = "";
       }
 
-      function failPayment(message) {
+      function failPayment(message, reference) {
         stopPaymentPolling();
-        document.getElementById("paySpinner").style.display = "none";
+        setPaymentState(
+          "failed",
+          "Payment not completed",
+          message || "The payment failed. No voucher was created.",
+          reference,
+        );
+        document.getElementById("payStateActions").className =
+          "payment-state-actions show";
+        document.getElementById("paySuccessAction").style.display = "none";
+        document.getElementById("payRetryButton").style.display = "flex";
+      }
+
+      function retryPayment() {
+        paymentRequestToken++;
+        stopPaymentPolling();
+        resetPaymentState();
         document.getElementById("payButtons").style.display = "block";
-        payActionType = "";
-        showToast(message, 5000);
+        document.getElementById("payPhone").focus();
+      }
+
+      function cancelPayment() {
+        closeModal("paymentModal");
       }
 
       /* ── Connect ── */
