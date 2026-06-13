@@ -501,10 +501,12 @@ def _finalize_payment_voucher(session: Session, payment: PortalPayment) -> Porta
 
 def refresh_portal_payment(session: Session, router_name: str, reference: UUID) -> PortalPayment:
     """Re-check a pending payment's status with the gateway and provision its voucher on success."""
+    router = find_router_by_name(session, router_name)
+    canonical_name = normalize_router_name(router.name) if router else normalize_router_name(router_name)
     payment = session.exec(
         select(PortalPayment)
         .where(PortalPayment.reference == reference)
-        .where(PortalPayment.router_name == normalize_router_name(router_name))
+        .where(PortalPayment.router_name == canonical_name)
     ).first()
     if not payment:
         raise ValueError("Payment not found")
@@ -551,10 +553,12 @@ def refresh_portal_payment(session: Session, router_name: str, reference: UUID) 
 
 
 def get_portal_payment(session: Session, router_name: str, reference: UUID) -> PortalPayment | None:
+    router = find_router_by_name(session, router_name)
+    canonical_name = normalize_router_name(router.name) if router else normalize_router_name(router_name)
     return session.exec(
         select(PortalPayment)
         .where(PortalPayment.reference == reference)
-        .where(PortalPayment.router_name == normalize_router_name(router_name))
+        .where(PortalPayment.router_name == canonical_name)
     ).first()
 
 
