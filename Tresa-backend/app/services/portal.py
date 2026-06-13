@@ -691,8 +691,9 @@ def _walled_garden_host_patterns(host: str) -> list[str]:
 def _walled_garden_hosts_for_template(template: str) -> list[str]:
     api_host = _host_from_url(_portal_api_base())
     payment_host = _host_from_url(settings.renult_pay_base_url)
+    r2_host = _host_from_url(settings.r2_public_base_url or settings.r2_endpoint_url or "")
 
-    base_hosts = [api_host, payment_host, *_MOBILE_MONEY_WALLED_GARDEN_HOSTS]
+    base_hosts = [api_host, payment_host, r2_host, *_MOBILE_MONEY_WALLED_GARDEN_HOSTS]
     hosts: list[str] = []
     for host in (*base_hosts, *_TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS.get(template, [])):
         for pattern in _walled_garden_host_patterns(host):

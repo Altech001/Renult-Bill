@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, health, monitoring, notification, branch, messaging, package, portal, router, staff, telegram, ticket, upload, wallet
+from app.api.routes import ads, auth, health, monitoring, notification, branch, messaging, package, portal, router, staff, telegram, ticket, upload, wallet
 from app.db.init import init_db
 from app.services.routers.concentrator import concentrator_worker
 from app.services.snmp_monitor import snmp_monitor_worker
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(notification.router)
     app.include_router(monitoring.router)
     app.include_router(upload.router)
+    app.include_router(ads.router)
     app.include_router(branch.router)
     app.include_router(messaging.router)
     app.include_router(package.router)

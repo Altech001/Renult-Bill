@@ -454,6 +454,26 @@ export interface CaptivePortalDeployResponse {
   diagnostics: Record<string, string>;
 }
 
+export interface PortalAdResponse {
+  id: string | null;
+  router_id: string | null;
+  enabled: boolean;
+  placement: "banner" | "flash";
+  media_type: "image" | "video";
+  title: string;
+  description: string;
+  media_url: string | null;
+  target_url: string | null;
+  duration_seconds: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type PortalAdUpsert = Omit<
+  PortalAdResponse,
+  "id" | "router_id" | "created_at" | "updated_at"
+>;
+
 // ── Packages Interfaces ────────────────────────────────────────
 export interface VoucherPackageResponse {
   id: number;
@@ -1025,6 +1045,17 @@ export const renultApi = {
       apiRequest<any>(`/portal/router/${routerName}/exists`, { auth: false }),
     createVoucher: (routerName: string, payload: { phone_number: string; package_id: number; payment_reference?: string | null; buy_for?: string }) =>
       apiRequest<PortalPaymentResponse>(`/portal/${routerName}/payments`, { method: "POST", auth: false, body: JSON.stringify(payload) }),
+  },
+  ads: {
+    get: (routerId: string) =>
+      apiRequest<PortalAdResponse>(`/routers/${routerId}/ads`),
+    upsert: (routerId: string, payload: PortalAdUpsert) =>
+      apiRequest<PortalAdResponse>(`/routers/${routerId}/ads`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    public: (routerName: string) =>
+      apiRequest<PortalAdResponse>(`/portal/${routerName}/ads`, { auth: false }),
   },
   packages: {
     list: (routerId: string) =>

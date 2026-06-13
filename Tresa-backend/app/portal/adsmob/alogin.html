@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="pragma" content="no-cache">
+  <meta http-equiv="expires" content="-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ff6000">
+  <title>WiFi | Connected</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: #f6f6f6;
+      color: #161616;
+      font-family: Inter, system-ui, sans-serif;
+    }
+    .portal-card {
+      width: min(100%, 440px);
+      overflow: hidden;
+      border: 1px solid #e5e5e5;
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 16px 45px rgba(0, 0, 0, .12);
+    }
+    .portal-head {
+      padding: 26px 22px;
+      background: linear-gradient(145deg, #171717, #000);
+      color: white;
+    }
+    .portal-head h1 { margin: 0; font-size: 1.35rem; }
+    .portal-head p { margin: 5px 0 0; color: #bbb; font-size: .85rem; }
+    .portal-body { padding: 20px; }
+    .ad { display: none; overflow: hidden; margin-bottom: 18px; border: 1px solid #eee; border-radius: 10px; }
+    .ad.visible { display: block; }
+    .ad img, .ad video { display: block; width: 100%; max-height: 260px; object-fit: cover; background: #111; }
+    .ad-copy { padding: 12px; }
+    .ad-label { color: #ff6000; font-size: .65rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .ad-title { margin-top: 4px; font-weight: 800; }
+    .ad-description { margin-top: 4px; color: #666; font-size: .82rem; }
+    .ad-link { display: inline-block; margin-top: 8px; color: #e55000; font-size: .8rem; font-weight: 800; }
+    .portal-button {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #ff6000;
+      color: white;
+      text-align: center;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .portal-button.secondary { background: #f1f1f1; color: #222; }
+    #countdown { color: #777; font-size: .78rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="portal-card">
+    <header class="portal-head">
+      <h1>__ROUTER_NAME__</h1>
+      <p>Your internet session is ready.</p>
+    </header>
+    <section class="portal-body">
+      <div class="ad" id="connectedAd"></div>
+      <h2>Connected successfully</h2>
+      <p id="countdown">Preparing your connection...</p>
+      <a class="portal-button" href="$(link-redirect)">Continue online</a>
+      <a class="portal-button secondary" href="$(link-status)">View connection status</a>
+    </section>
+  </main>
+  <script>
+    var API_BASE = "__PORTAL_API_BASE__";
+    var ROUTER_ID = "__ROUTER_PUBLIC_ID__";
+
+    function showAd(ad) {
+      var container = document.getElementById("connectedAd");
+      if (!ad || !ad.enabled || !container) return 2;
+      if (ad.media_url) {
+        var media = document.createElement(ad.media_type === "video" ? "video" : "img");
+        media.src = ad.media_url;
+        if (ad.media_type === "video") {
+          media.controls = true;
+          media.muted = true;
+          media.autoplay = true;
+          media.playsInline = true;
+        } else {
+          media.alt = ad.title || "Sponsored";
+        }
+        container.appendChild(media);
+      }
+      var copy = document.createElement("div");
+      copy.className = "ad-copy";
+      var label = document.createElement("div");
+      label.className = "ad-label";
+      label.textContent = "Sponsored";
+      copy.appendChild(label);
+      var title = document.createElement("div");
+      title.className = "ad-title";
+      title.textContent = ad.title || "Sponsored";
+      copy.appendChild(title);
+      if (ad.description) {
+        var description = document.createElement("div");
+        description.className = "ad-description";
+        description.textContent = ad.description;
+        copy.appendChild(description);
+      }
+      if (ad.target_url) {
+        var link = document.createElement("a");
+        link.className = "ad-link";
+        link.href = ad.target_url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Learn more";
+        copy.appendChild(link);
+      }
+      container.appendChild(copy);
+      container.classList.add("visible");
+      return Math.max(2, Number(ad.duration_seconds) || 5);
+    }
+
+    function redirectAfter(seconds) {
+      var countdown = document.getElementById("countdown");
+      var destination = "$(link-redirect)";
+      var remaining = seconds;
+      countdown.textContent = "Continuing in " + remaining + " seconds";
+      var timer = window.setInterval(function () {
+        remaining -= 1;
+        if (remaining <= 0) {
+          window.clearInterval(timer);
+          if (destination.indexOf("$(") === -1) window.location.href = destination;
+          else countdown.textContent = "You are connected.";
+          return;
+        }
+        countdown.textContent = "Continuing in " + remaining + " seconds";
+      }, 1000);
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", API_BASE + "/portal/" + encodeURIComponent(ROUTER_ID) + "/ads", true);
+    xhr.timeout = 8000;
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      var seconds = 2;
+      if (xhr.status === 200) {
+        try { seconds = showAd(JSON.parse(xhr.responseText)); } catch (e) {}
+      }
+      redirectAfter(seconds);
+    };
+    xhr.ontimeout = function () { redirectAfter(2); };
+    xhr.onerror = function () { redirectAfter(2); };
+    xhr.send();
+  </script>
+</body>
+</html>

@@ -26,6 +26,7 @@ from app.models import (
     BranchWalletTransaction,
     PlatformLedgerEntry,
     TelegramConnection,
+    PortalAd,
 )
 
 
@@ -54,6 +55,7 @@ def init_db() -> None:
         BranchWalletTransaction,
         PlatformLedgerEntry,
         TelegramConnection,
+        PortalAd,
     )
     SQLModel.metadata.create_all(engine)
     _ensure_staff_columns()

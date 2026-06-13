@@ -2,6 +2,7 @@ import AppHeader from "@/components/Header/AppHeader";
 import SEO from "@/components/SEO";
 import {
   Bell,
+  BadgeDollarSign,
   CreditCard,
   Key,
   Megaphone,
@@ -63,6 +64,12 @@ const navItems: SettingsNavItem[] = [
     label: "View Notifications",
     icon: <Bell className="w-4 h-4" />,
     path: "/settings/notifications",
+  },
+  {
+    id: "adsmob",
+    label: "AdsMob",
+    icon: <BadgeDollarSign className="w-4 h-4" />,
+    path: "/settings/adsmob",
   },
   {
     id: "campaigns",
