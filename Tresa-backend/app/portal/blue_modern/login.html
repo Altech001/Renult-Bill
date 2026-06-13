@@ -178,6 +178,13 @@
       stroke: #fff;
     }
 
+    .hero-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+
     .hero-text {
       flex: 1;
     }
@@ -1310,21 +1317,22 @@
         </svg>
       </div>
       <div class="hero-content">
-        <!-- <div class="hero-logo-circle" style="background:rgba(255,96,0,.22);border-color:rgba(255,96,0,.45);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"
+        <div class="hero-logo-circle" id="portalLogoWrap">
+          <img class="hero-logo-img" id="portalLogo" alt="" style="display: none" />
+          <svg id="portalLogoIcon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path d="M1.5 8.5a18.5 18.5 0 0 1 21 0" />
             <path d="M5 12a14 14 0 0 1 14 0" />
             <path d="M9 15.5a8.5 8.5 0 0 1 6 0" />
             <line x1="12" y1="19" x2="12.01" y2="19" />
           </svg>
-        </div> -->
+        </div>
         <div class="hero-text">
-          <div class="hero-title">Renault WIFI</div>
-          <div class="hero-subtitle">High-speed internet access portal</div>
-          <div class="sppport">
-            <a href="tel:+256771234567" class="support-numbers">+256771234567</a>
-            <a href="tel:+256752345678" class="support-numbers">+256752345678</a>
+          <div class="hero-title" id="portalTitle">Renault WIFI</div>
+          <div class="hero-subtitle" id="portalDescription">High-speed internet access portal</div>
+          <div class="sppport" id="portalSupport" style="display:none">
+            <a href="#" class="support-numbers" id="portalPhoneOne" style="display:none"></a>
+            <a href="#" class="support-numbers" id="portalPhoneTwo" style="display:none"></a>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
@@ -1494,8 +1502,7 @@
 
       <div id="paySpinner" class="spinner-wrap">
         <div class="spinner"></div>
-        <p style="font-size:.8rem;color:var(--text-muted);margin-top:10px;">Processing payment… Please don't close this
-          page.</p>
+        <p id="paySpinnerText" style="font-size:.8rem;color:var(--text-muted);margin-top:10px;">Sending a payment prompt to your phone. This can take a few seconds...</p>
       </div>
 
       <div id="payButtons">
@@ -1573,6 +1580,12 @@
       if (sheet) sheet.classList.remove('open');
       if (overlay) overlay.classList.remove('open');
       document.body.style.overflow = '';
+      if (id === 'paymentModal') {
+        stopPaymentPolling();
+        document.getElementById('paySpinner').style.display = 'none';
+        document.getElementById('payButtons').style.display = 'block';
+        payActionType = '';
+      }
     }
 
     /* ── Router and API configuration ── */
@@ -1648,6 +1661,52 @@
       return String(value == null ? '' : value)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function setSupportPhone(elementId, phone) {
+      var link = document.getElementById(elementId);
+      if (!link) return;
+      var value = String(phone || '').trim();
+      link.style.display = value ? '' : 'none';
+      if (!value) return;
+      link.textContent = value;
+      link.setAttribute('href', 'tel:' + value.replace(/[^\d+]/g, ''));
+    }
+
+    function loadPortalConfig() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', API_BASE + '/portal/' + encodeURIComponent(ROUTER_ID), true);
+      xhr.timeout = 15000;
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4 || xhr.status !== 200) return;
+        try {
+          var config = JSON.parse(xhr.responseText);
+          if (config.title) document.getElementById('portalTitle').textContent = config.title;
+          if (config.description) document.getElementById('portalDescription').textContent = config.description;
+          setSupportPhone('portalPhoneOne', config.phone_one);
+          setSupportPhone('portalPhoneTwo', config.phone_two);
+          var support = document.getElementById('portalSupport');
+          if (support) {
+            support.style.display = (config.phone_one || config.phone_two) ? 'flex' : 'none';
+          }
+          if (config.logo_url) {
+            var logoImg = document.getElementById('portalLogo');
+            var logoIcon = document.getElementById('portalLogoIcon');
+            if (logoImg && logoIcon) {
+              logoImg.onload = function () {
+                logoImg.style.display = 'block';
+                logoIcon.style.display = 'none';
+              };
+              logoImg.onerror = function () {
+                logoImg.style.display = 'none';
+                logoIcon.style.display = 'block';
+              };
+              logoImg.src = config.logo_url;
+            }
+          }
+        } catch (e) { }
+      };
+      xhr.send();
     }
 
     function renderPkgTile(v, speed) {
@@ -1778,7 +1837,16 @@
       return p;
     }
 
-    var payActionType = '';
+    var paymentPollTimer = null;
+    var paymentPollAttempts = 0;
+    var PAYMENT_POLL_INTERVAL_MS = 3000;
+    var PAYMENT_POLL_MAX_ATTEMPTS = 60; // ~3 minutes
+
+    function setPaySpinnerText(text) {
+      var el = document.getElementById('paySpinnerText');
+      if (el) el.textContent = text;
+    }
+
     function initiatePayment(type) {
       var phone = document.getElementById('payPhone').value;
       if (!isValidPhone(phone)) {
@@ -1788,6 +1856,7 @@
       document.getElementById('payPhoneErr').textContent = '';
       payActionType = type || 'self';
       document.getElementById('payButtons').style.display = 'none';
+      setPaySpinnerText('Sending a payment prompt to your phone. This can take a few seconds...');
       document.getElementById('paySpinner').style.display = 'block';
       var xhr = new XMLHttpRequest();
       xhr.open('POST', API_BASE + '/portal/' + encodeURIComponent(ROUTER_ID) + '/payments', true);
@@ -1798,8 +1867,8 @@
         if (xhr.status === 200) {
           try {
             var response = JSON.parse(xhr.responseText);
-            if (response.success && response.voucher && response.voucher.voucher_code) {
-              completePayment(response.voucher.voucher_code);
+            if (response.reference && response.status !== 'FAILED') {
+              pollPaymentStatus(response.reference);
               return;
             }
             failPayment(response.message || 'Payment could not be started.');
@@ -1816,7 +1885,60 @@
       }));
     }
 
+    function stopPaymentPolling() {
+      if (paymentPollTimer) {
+        clearTimeout(paymentPollTimer);
+        paymentPollTimer = null;
+      }
+      paymentPollAttempts = 0;
+    }
+
+    function pollPaymentStatus(reference) {
+      stopPaymentPolling();
+      setPaySpinnerText('Check your phone for a Mobile Money prompt and enter your PIN to approve. Please don\'t close this page.');
+
+      function checkOnce() {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', API_BASE + '/portal/' + encodeURIComponent(ROUTER_ID) + '/payments/' + encodeURIComponent(reference), true);
+        xhr.timeout = 15000;
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          if (xhr.status === 200) {
+            try {
+              var response = JSON.parse(xhr.responseText);
+              if (response.status === 'SUCCESS' && response.voucher && response.voucher.voucher_code) {
+                completePayment(response.voucher.voucher_code);
+                return;
+              }
+              if (response.status === 'FAILED') {
+                failPayment(response.message || 'The payment was not completed.');
+                return;
+              }
+            } catch (e) {
+              // Ignore parse errors and keep polling.
+            }
+          }
+          scheduleNext();
+        };
+        xhr.ontimeout = scheduleNext;
+        xhr.onerror = scheduleNext;
+        xhr.send();
+      }
+
+      function scheduleNext() {
+        paymentPollAttempts++;
+        if (paymentPollAttempts >= PAYMENT_POLL_MAX_ATTEMPTS) {
+          failPayment("We couldn't confirm your payment yet. If money was deducted, tap Find My Code in a moment or contact support.");
+          return;
+        }
+        paymentPollTimer = setTimeout(checkOnce, PAYMENT_POLL_INTERVAL_MS);
+      }
+
+      checkOnce();
+    }
+
     function completePayment(voucher) {
+      stopPaymentPolling();
       document.getElementById('paySpinner').style.display = 'none';
       document.getElementById('payButtons').style.display = 'block';
       closeModal('paymentModal');
@@ -1831,6 +1953,7 @@
     }
 
     function failPayment(message) {
+      stopPaymentPolling();
       document.getElementById('paySpinner').style.display = 'none';
       document.getElementById('payButtons').style.display = 'block';
       payActionType = '';
@@ -1941,6 +2064,7 @@
         return;
       }
       if (routerError && attemptedMode === 'username') clearVoucherAttempt();
+      loadPortalConfig();
       loadPackages();
     });
   </script>

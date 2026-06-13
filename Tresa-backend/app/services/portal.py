@@ -170,9 +170,12 @@ def find_package(session: Session, router_name: str, package_id: int) -> dict[st
     return next((package for package in packages if package["package_id"] == package_id), None)
 
 
-def generate_voucher_code(router_name: str) -> str:
-    prefix = normalize_router_name(router_name)[:3] or "RTR"
-    return f"{prefix}-{secrets.token_hex(3).upper()}"
+def generate_voucher_code(session: Session) -> str:
+    while True:
+        code = "".join(secrets.choice("0123456789") for _ in range(8))
+        exists = session.exec(select(VoucherPurchase).where(VoucherPurchase.voucher_code == code)).first()
+        if not exists:
+            return code
 
 
 def _hotspot_limit_to_routeros(limit: str) -> str | None:
@@ -338,7 +341,7 @@ def _create_and_provision_voucher(
         wallet_id=wallet.id,
         router_name=wallet.router_name,
         phone_number=wallet.phone_number,
-        voucher_code=generate_voucher_code(router.name),
+        voucher_code=generate_voucher_code(session),
         package_id=package["package_id"],
         profile=package["profile"],
         speed_type=package["speed_type"],
