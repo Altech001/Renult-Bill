@@ -2,7 +2,7 @@ from datetime import datetime
 from html import escape
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlmodel import select
 
 from app.api.deps import CurrentUser
@@ -32,6 +32,7 @@ from app.services.portal import (
     get_public_captive_config,
     initiate_portal_payment,
     normalize_router_name,
+    portal_deployment_file,
     push_captive_files_to_mikrotik,
     refresh_portal_payment,
 )
@@ -131,6 +132,23 @@ def public_captive_config(
     session: SessionDep,
 ) -> CaptivePortalResponse:
     return CaptivePortalResponse(**get_public_captive_config(session, router_name))
+
+
+@router.get("/portal/{router_name}/deployment-files/{remote_name:path}")
+def public_portal_deployment_file(
+    router_name: str,
+    remote_name: str,
+    session: SessionDep,
+) -> Response:
+    rendered = portal_deployment_file(session, router_name, remote_name)
+    if not rendered:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Portal file not found")
+    content, content_type = rendered
+    return Response(
+        content=content,
+        media_type=content_type.split(";", 1)[0],
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/portal/{router_name}/packages")

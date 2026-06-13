@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import secrets
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -885,6 +886,8 @@ def _portal_template_files(template_dir: Path, router: Router) -> list[tuple[str
         if not path.is_file():
             continue
         relative_path = path.relative_to(template_dir).as_posix()
+        if path.suffix.lower() == ".md":
+            continue
         if relative_path == "index.html":
             remote_names = ["index.html", "login.html"]
         elif relative_path == "login.html" and not (template_dir / "index.html").exists():
@@ -895,6 +898,69 @@ def _portal_template_files(template_dir: Path, router: Router) -> list[tuple[str
         for remote_name in remote_names:
             files.append((remote_name, content, path))
     return files
+
+
+_PORTAL_FILE_PRIORITY = {
+    "login.html": 0,
+    "index.html": 1,
+    "md5.js": 2,
+    "portal.css": 3,
+    "alogin.html": 4,
+    "error.html": 5,
+    "status.html": 6,
+    "logout.html": 7,
+    "redirect.html": 8,
+    "rlogin.html": 9,
+    "errors.txt": 10,
+}
+
+
+def _ordered_portal_files(files: dict[str, str]) -> list[tuple[str, str]]:
+    return sorted(
+        files.items(),
+        key=lambda item: (_PORTAL_FILE_PRIORITY.get(item[0], 100), item[0]),
+    )
+
+
+def _essential_portal_files(template: str) -> set[str]:
+    required = {"login.html", "index.html", "alogin.html", "error.html"}
+    if template in {"renault", "adsmob", "classic", "modern", "blue_modern", "brown_cards"}:
+        required.add("md5.js")
+    return required
+
+
+def portal_deployment_file(
+    session: Session,
+    router_name: str,
+    remote_name: str,
+) -> tuple[bytes, str] | None:
+    router = find_router_by_name(session, router_name)
+    if not router:
+        return None
+    captive = session.exec(
+        select(CaptivePortal).where(CaptivePortal.router_id == router.id)
+    ).first()
+    template = captive.portal_template if captive else "renault"
+    template_dir = PORTAL_ROOT / template
+    safe_name = Path(remote_name).as_posix().lstrip("/")
+    if safe_name.startswith("../") or "/../" in safe_name:
+        return None
+    source_name = "login.html" if safe_name == "index.html" and not (template_dir / "index.html").exists() else safe_name
+    source_path = template_dir / source_name
+    if not source_path.is_file() or source_path.suffix.lower() == ".md":
+        return None
+    try:
+        source_path.resolve().relative_to(template_dir.resolve())
+    except ValueError:
+        return None
+    return _render_portal_file(source_path, router), _portal_file_content_type(source_path)
+
+
+def _portal_backend_file_url(router: Router, remote_name: str) -> str:
+    return (
+        f"{_portal_api_base()}/portal/{quote(router_public_id(router), safe='')}"
+        f"/deployment-files/{quote(remote_name, safe='/')}"
+    )
 
 
 def _validate_portal_template(template_dir: Path, template: str) -> str | None:
@@ -956,7 +1022,7 @@ def deploy_captive_portal_via_fetch(
     router_directory = _router_directory_name(router.name)
     fetched_files: list[str] = []
     fetch_errors: list[str] = []
-    items = list(upload_result["files"].items())
+    items = _ordered_portal_files(upload_result["files"])
 
     # `/tool fetch` can occasionally run past the routeros_api default 15s
     # socket timeout (slow DNS/TLS to R2 from the router's WAN link). A
@@ -967,36 +1033,42 @@ def deploy_captive_portal_via_fetch(
     # down the rest of the deploy.
     FETCH_SOCKET_TIMEOUT = 60.0
 
-    index = 0
-    while index < len(items):
-        try:
-            with router_connection(router, socket_timeout=FETCH_SOCKET_TIMEOUT) as api:
+    retry_counts: dict[str, int] = {}
+    fallback_files: list[str] = []
+    for remote_name, r2_url in items:
+        urls = [r2_url, _portal_backend_file_url(router, remote_name)]
+        errors: list[str] = []
+        fetched = False
+        for source_index, url in enumerate(urls):
+            attempts_for_source = 1 if source_index == 0 else 2
+            for attempt in range(1, attempts_for_source + 1):
+                retry_counts[remote_name] = retry_counts.get(remote_name, 0) + 1
                 try:
-                    api.get_resource("/file").add(name=router_directory, type="directory")
-                except Exception:
-                    pass  # directory already exists, or RouterOS creates it on fetch
-
-                tool_resource = api.get_resource("/tool")
-                while index < len(items):
-                    remote_name, url = items[index]
-                    index += 1
-                    try:
-                        replies = tool_resource.call("fetch", {
+                    with router_connection(router, socket_timeout=FETCH_SOCKET_TIMEOUT) as api:
+                        try:
+                            api.get_resource("/file").add(name=router_directory, type="directory")
+                        except Exception:
+                            pass
+                        replies = api.get_resource("/tool").call("fetch", {
                             "url": url,
                             "dst-path": f"{router_directory}/{remote_name}",
                             "mode": "https",
+                            "check-certificate": "no",
                         })
-                        status = replies[-1].get("status") if replies else None
-                        if status and status != "finished":
-                            fetch_errors.append(f"{remote_name}: {status}")
-                        else:
-                            fetched_files.append(remote_name)
-                    except Exception as exc:
-                        fetch_errors.append(f"{remote_name}: {exc}")
-                        break  # reconnect before fetching the remaining files
-        except Exception as exc:
-            fetch_errors.append(f"connection: {exc}")
-            break
+                        fetch_status = replies[-1].get("status") if replies else None
+                        if fetch_status and fetch_status != "finished":
+                            raise RuntimeError(str(fetch_status))
+                    fetched_files.append(remote_name)
+                    if source_index == 1:
+                        fallback_files.append(remote_name)
+                    fetched = True
+                    break
+                except Exception as exc:
+                    errors.append(f"source {source_index + 1}, attempt {attempt}: {exc}")
+            if fetched:
+                break
+        if not fetched:
+            fetch_errors.append(f"{remote_name}: {'; '.join(errors)}")
 
     if not fetched_files:
         return {
@@ -1029,7 +1101,10 @@ def deploy_captive_portal_via_fetch(
         "walled_garden_hosts": ",".join(allowed_hosts) or "none",
         "walled_garden_script": _WALLED_GARDEN_SYNC_NAME,
         "updated_hotspot_profiles": ",".join(updated_profiles) or "none",
+        "fetch_attempts": ",".join(f"{name}:{count}" for name, count in retry_counts.items()),
     }
+    if fallback_files:
+        diagnostics["backend_fallback_files"] = ",".join(fallback_files)
     if fetch_errors:
         diagnostics["fetch_errors"] = "; ".join(fetch_errors)
 
@@ -1046,12 +1121,20 @@ def deploy_captive_portal_via_fetch(
             "diagnostics": diagnostics,
         }
 
+    missing_essential = sorted(_essential_portal_files(template) - set(fetched_files))
+    if missing_essential:
+        diagnostics["missing_essential_files"] = ",".join(missing_essential)
+
     return {
-        "success": not fetch_errors,
+        "success": not missing_essential,
         "fetched_files": fetched_files,
         "deployed_directory": router_directory,
         "updated_profiles": updated_profiles,
-        "error": "; ".join(fetch_errors) if fetch_errors else None,
+        "error": (
+            f"Essential captive files could not be deployed: {', '.join(missing_essential)}"
+            if missing_essential
+            else None
+        ),
         "diagnostics": diagnostics,
     }
 
@@ -1148,6 +1231,8 @@ def push_captive_files_to_mikrotik(
                 if not path.is_file():
                     continue
                 relative_path = path.relative_to(template_dir).as_posix()
+                if path.suffix.lower() == ".md":
+                    continue
                 if relative_path == "index.html":
                     remote_names = ["index.html", "login.html"]
                 elif relative_path == "login.html" and not (template_dir / "index.html").exists():
