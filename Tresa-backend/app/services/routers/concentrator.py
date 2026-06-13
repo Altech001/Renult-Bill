@@ -54,6 +54,26 @@ def registration_token(router_id: UUID, issued_at: int | None = None) -> str:
     return f"{value}.{signature}"
 
 
+def heartbeat_token(router_id: UUID) -> str:
+    value = f"heartbeat.{router_id}"
+    signature = hmac.new(
+        settings.router_registration_secret.encode(), value.encode(), hashlib.sha256
+    ).hexdigest()
+    return f"{router_id}.{signature}"
+
+
+def verify_heartbeat_token(token: str) -> UUID:
+    try:
+        router_id_raw, signature = token.rsplit(".", 1)
+        router_id = UUID(router_id_raw)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("Invalid router heartbeat token") from exc
+    expected = heartbeat_token(router_id).rsplit(".", 1)[1]
+    if not hmac.compare_digest(signature, expected):
+        raise ValueError("Invalid router heartbeat token")
+    return router_id
+
+
 def verify_registration_token(token: str) -> UUID:
     try:
         value, issued_at_raw, signature = token.rsplit(".", 2)

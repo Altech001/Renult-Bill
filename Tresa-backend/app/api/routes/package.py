@@ -1,6 +1,7 @@
 import secrets
 import re
 from datetime import datetime
+from html import escape
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -50,6 +51,7 @@ from app.services.routers.Packages import (
     sync_packages_from_mikrotik,
     update_router_package,
 )
+from app.services.telegram import send_branch_event
 
 router = APIRouter(tags=["Packages"])
 
@@ -327,6 +329,22 @@ def _create_router_vouchers(
             body=f"{len(vouchers)} voucher(s) created for {db_router.name} using package {package.profile}.",
         )
     session.commit()
+    if branch:
+        code_preview = ", ".join(voucher.voucher_code for voucher in vouchers[:10])
+        if len(vouchers) > 10:
+            code_preview += f" and {len(vouchers) - 10} more"
+        send_branch_event(
+            session,
+            branch.id,
+            "voucher_batch",
+            (
+                "<b>Voucher batch created</b>\n"
+                f"Router: {escape(db_router.name)}\n"
+                f"Package: {escape(package.profile)}\n"
+                f"Quantity: {len(vouchers)}\n"
+                f"Codes: <code>{escape(code_preview)}</code>"
+            ),
+        )
 
     report(80, "Verifying", "Reading hotspot users back from MikroTik")
     verified_codes: set[str] = set()

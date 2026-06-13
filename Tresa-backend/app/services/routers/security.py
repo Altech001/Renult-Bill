@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from app.models.router import Router
 from app.core.config import settings
-from app.services.routers.concentrator import registration_token
+from app.services.routers.concentrator import heartbeat_token, registration_token
 
 
 MIN_DYNAMIC_API_PORT = int(os.getenv("ROUTER_API_PORT_MIN", "49152"))
@@ -79,20 +79,21 @@ def build_secure_setup_script(
     ipsec_secret = _routeros_quote(settings.router_l2tp_ipsec_secret)
     snmp_community = _routeros_quote(settings.snmp_community)
     token = _routeros_quote(token)
+    heartbeat = _routeros_quote(heartbeat_token(router.id))
     if not ipsec_secret:
         raise RuntimeError("ROUTER_L2TP_IPSEC_SECRET is not configured")
 
     if include_walled_garden:
         walled_garden_block = (
-            "\n    # 7. Walled garden — allow billing portal before hotspot login.\n"
+            "\n    # 8. Walled garden — allow billing portal before hotspot login.\n"
             f'    :local portalDomain "{portal_domain}"\n'
             "    :do {\n"
             '        :foreach wge in=[/ip hotspot walled-garden find where comment~"Tresa:"] do={ /ip hotspot walled-garden remove $wge }\n'
             '        /ip hotspot walled-garden add dst-host=$portalDomain comment="Tresa: billing portal"\n'
             '        /ip hotspot walled-garden add dst-host=("*." . $portalDomain) comment="Tresa: billing portal wildcard"\n'
-            '        :put "Step 7: Walled garden set for Renult portal."\n'
+            '        :put "Step 8: Walled garden set for Renult portal."\n'
             "    } on-error={\n"
-            '        :put "Step 7: Walled garden skipped (hotspot not yet active — provision from dashboard)."\n'
+            '        :put "Step 8: Walled garden skipped (hotspot not yet active — provision from dashboard)."\n'
             "    }"
         )
         wg_status = "Configured (if hotspot active)"
@@ -314,8 +315,34 @@ def build_secure_setup_script(
         :put "Step 6: ERROR - tresa-tunnel dropped after the provisioning confirmation step."
         :error "Final tunnel verification failed"
     }}
+
+    # 7. Install the one-minute backend heartbeat and status scheduler.
+    :foreach oldHeartbeat in=[/system script find where name="TresaHeartbeat"] do={{
+        /system script remove $oldHeartbeat
+    }}
+    /system script add name="TresaHeartbeat" policy=read,write,test source={{
+        :local heartbeatApi "{api_url}"
+        :local heartbeatSecret "{heartbeat}"
+        :local heartbeatMac ""
+        :local heartbeatWan [/interface ethernet find where default-name="ether1"]
+        :if ([:len $heartbeatWan] = 0) do={{ :set heartbeatWan [/interface ethernet find where name="ether1"] }}
+        :if ([:len $heartbeatWan] > 0) do={{ :set heartbeatMac [/interface ethernet get $heartbeatWan mac-address] }}
+        :local heartbeatUptime [/system resource get uptime]
+        :local heartbeatBody ("{{\\\"token\\\":\\\"" . $heartbeatSecret . "\\\",\\\"mac\\\":\\\"" . $heartbeatMac . "\\\",\\\"uptime\\\":\\\"" . $heartbeatUptime . "\\\"}}")
+        :do {{
+            /tool fetch url=($heartbeatApi . "/api/routers/heartbeat") http-method=post http-data=$heartbeatBody http-header-field="Content-Type: application/json" output=none
+        }} on-error={{
+            :log warning "Tresa heartbeat could not reach backend"
+        }}
+    }}
+    :foreach oldSchedule in=[/system scheduler find where name="RunTresaHeartbeat"] do={{
+        /system scheduler remove $oldSchedule
+    }}
+    /system scheduler add name="RunTresaHeartbeat" start-time=startup interval=1m on-event="/system script run TresaHeartbeat" policy=read,write,test
+    /system script run TresaHeartbeat
+    :put "Step 7: Heartbeat script and one-minute scheduler installed."
 {walled_garden_block}
-    # 8. Final verification summary.
+    # 9. Final verification summary.
     :local snmpOk "yes"
     :if ([/snmp get enabled] != true) do={{ :set snmpOk "disabled" }}
     :local apiOk "yes"

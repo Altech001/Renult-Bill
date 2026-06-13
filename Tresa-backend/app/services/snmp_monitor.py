@@ -18,6 +18,7 @@ from app.models.router import Router
 from app.models.user import User
 from app.services.email import send_email
 from app.services.messaging import normalize_sms_phone, send_sms, sms_was_accepted
+from app.services.telegram import send_branch_event
 
 SYS_UPTIME_OID = (1, 3, 6, 1, 2, 1, 1, 3, 0)
 
@@ -200,6 +201,17 @@ def _notify_transition(
             title=f"{router.name} is {state}",
             body=body,
         )
+    )
+    send_branch_event(
+        session,
+        branch.id,
+        "router",
+        (
+            f"<b>Router {state}</b>\n"
+            f"Router: {escape(router.name)}\n"
+            "Source: SNMP monitoring\n"
+            f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        ),
     )
     preferences = get_or_create_preferences(session, user)
     if preferences.email_router_alerts:

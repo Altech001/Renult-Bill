@@ -3,6 +3,7 @@
 import hmac
 import secrets
 from datetime import datetime, timedelta
+from html import escape
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -30,6 +31,7 @@ from app.schemas.wallet import (
 from app.services import wallet as wallet_svc
 from app.services.email import send_withdrawal_code_email, send_withdrawal_receipt_email
 from app.services.security import hash_code
+from app.services.telegram import send_user_event
 
 router = APIRouter(prefix="/wallets", tags=["Wallets"])
 
@@ -231,6 +233,23 @@ def confirm_withdrawal(
         )
     except Exception:
         receipt_email_sent = False
+
+    send_user_event(
+        session,
+        user.id,
+        "withdrawal",
+        (
+            "<b>Withdrawal receipt</b>\n"
+            f"Branch: {escape(branch.name)}\n"
+            f"Recipient: {escape(challenge.recipient_name)}\n"
+            f"Phone: {escape(challenge.recipient_phone)}\n"
+            f"Provider: {escape(challenge.provider)}\n"
+            f"Amount: UGX {txn.amount:,}\n"
+            f"Fee: UGX {txn.fee_amount:,}\n"
+            f"Net: UGX {txn.net_amount:,}\n"
+            f"Transaction: <code>{txn.id}</code>"
+        ),
+    )
 
     return WithdrawalConfirmResponse(
         transaction=_txn_response(txn),

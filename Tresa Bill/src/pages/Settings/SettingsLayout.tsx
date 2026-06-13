@@ -6,6 +6,7 @@ import {
   Key,
   Megaphone,
   ScrollText,
+  Send,
   User
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -50,6 +51,12 @@ const navItems: SettingsNavItem[] = [
     label: "Recent Transactions",
     icon: <CreditCard className="w-4 h-4" />,
     path: "/settings/billing",
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    icon: <Send className="w-4 h-4" />,
+    path: "/settings/telegram",
   },
   {
     id: "notifications",

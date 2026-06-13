@@ -85,6 +85,23 @@ export interface NotificationPreferenceResponse {
   sms_cost_ugx: number;
 }
 
+export interface TelegramConnectionResponse {
+  connected: boolean;
+  bot_username: string | null;
+  chat_id: string | null;
+  chat_title: string | null;
+  voucher_purchases: boolean;
+  voucher_batches: boolean;
+  withdrawal_receipts: boolean;
+  router_alerts: boolean;
+  hourly_router_ping: boolean;
+}
+
+export type TelegramPreferenceUpdate = Pick<
+  TelegramConnectionResponse,
+  "voucher_purchases" | "voucher_batches" | "withdrawal_receipts" | "router_alerts" | "hourly_router_ping"
+>;
+
 export interface RouterMonitorItem {
   router_id: string;
   router_name: string;
@@ -899,6 +916,28 @@ export const renultApi = {
       apiRequest<NotificationPreferenceResponse>("/notification-preferences", {
         method: "PUT",
         body: JSON.stringify(payload),
+      }),
+  },
+  telegram: {
+    connection: () =>
+      apiRequest<TelegramConnectionResponse>("/telegram/connection"),
+    connect: (bot_token: string) =>
+      apiRequest<TelegramConnectionResponse>("/telegram/connection", {
+        method: "POST",
+        body: JSON.stringify({ bot_token }),
+      }),
+    updatePreferences: (payload: TelegramPreferenceUpdate) =>
+      apiRequest<TelegramConnectionResponse>("/telegram/preferences", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    test: () =>
+      apiRequest<{ success: boolean; message: string }>("/telegram/test", {
+        method: "POST",
+      }),
+    disconnect: () =>
+      apiRequest<{ success: boolean; message: string }>("/telegram/connection", {
+        method: "DELETE",
       }),
   },
   uploads: {

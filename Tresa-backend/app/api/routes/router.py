@@ -34,6 +34,8 @@ from app.schemas.router import (
     RouterCommandRequest,
     RouterCommandResponse,
     RouterConfirmRequest,
+    RouterHeartbeatRequest,
+    RouterHeartbeatResponse,
     RouterCredentialsRequest,
     RouterProvisionRequest,
     RouterProvisionResponse,
@@ -92,10 +94,13 @@ from app.services.routers.concentrator import (
     run_safe_command,
     save_router_credentials,
     verify_registration_token,
+    verify_heartbeat_token,
 )
 from app.services.routers.credentials import decrypt_secret, encrypt_secret
 from app.services.routers.events import router_event_hub
 from app.services.security import decode_access_token
+from app.services.router_heartbeat import record_heartbeat
+from app.services.telegram import send_branch_event
 
 router = APIRouter(tags=["Routers"])
 
@@ -616,6 +621,16 @@ def public_router_confirm(
 ) -> RouterProvisionResponse:
     try:
         db_router = confirm_router(session, payload.token, payload.mac)
+        send_branch_event(
+            session,
+            db_router.branch_id,
+            "router",
+            (
+                "<b>Router activated</b>\n"
+                f"Router: {db_router.name}\n"
+                f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            ),
+        )
         return RouterProvisionResponse(
             router_id=db_router.id,
             status="provisioned",
@@ -625,6 +640,26 @@ def public_router_confirm(
     except Exception as exc:
         log_error(session, "public_router_confirm", exc)
         return JSONResponse(content={"status": "error", "error": str(exc)})
+
+
+@router.post("/api/routers/heartbeat", response_model=RouterHeartbeatResponse)
+def public_router_heartbeat(
+    payload: RouterHeartbeatRequest,
+    session: SessionDep,
+) -> RouterHeartbeatResponse:
+    try:
+        router_id = verify_heartbeat_token(payload.token)
+        db_router = session.get(Router, router_id)
+        if not db_router:
+            raise ValueError("Router not found")
+        expected_mac = "".join(character for character in (db_router.mac_address or "").upper() if character.isalnum())
+        supplied_mac = "".join(character for character in payload.mac.upper() if character.isalnum())
+        if expected_mac and expected_mac != supplied_mac:
+            raise ValueError("Router MAC address does not match")
+        heartbeat_status = record_heartbeat(session, db_router, payload.uptime)
+        return RouterHeartbeatResponse(status=heartbeat_status, server_time=datetime.utcnow())
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
 
 
 @router.get("/api/routers/script/{token}.rsc", response_class=PlainTextResponse)

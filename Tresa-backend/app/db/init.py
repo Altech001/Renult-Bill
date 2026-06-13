@@ -25,6 +25,7 @@ from app.models import (
     BranchWallet,
     BranchWalletTransaction,
     PlatformLedgerEntry,
+    TelegramConnection,
 )
 
 
@@ -52,6 +53,7 @@ def init_db() -> None:
         BranchWallet,
         BranchWalletTransaction,
         PlatformLedgerEntry,
+        TelegramConnection,
     )
     SQLModel.metadata.create_all(engine)
     _ensure_staff_columns()
@@ -123,6 +125,9 @@ def _ensure_router_columns() -> None:
         "snmp_checked_at": "TIMESTAMP",
         "snmp_uptime_seconds": "INTEGER",
         "snmp_error": "TEXT",
+        "heartbeat_status": "VARCHAR DEFAULT 'unknown' NOT NULL",
+        "heartbeat_at": "TIMESTAMP",
+        "heartbeat_hourly_notified_at": "TIMESTAMP",
         "connected_at": "TIMESTAMP",
         "disconnected_at": "TIMESTAMP",
         "last_seen": "TIMESTAMP",

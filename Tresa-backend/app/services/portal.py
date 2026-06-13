@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta
+from html import escape
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -28,6 +29,7 @@ from app.services import wallet as wallet_svc
 from app.services.routers.Packages import get_router_packages
 from app.services.routers.routeros import router_connection
 from app.services.storage import STORAGE_ERRORS, object_url, refresh_logo_url, upload_bytes
+from app.services.telegram import branch_has_event_connection, send_branch_event, verified_phone_name
 
 
 logger = logging.getLogger(__name__)
@@ -392,6 +394,26 @@ def _create_and_provision_voucher(
     session.add(voucher)
     session.commit()
     session.refresh(voucher)
+    customer_name = (
+        verified_phone_name(wallet.phone_number)
+        if branch_has_event_connection(session, router.branch_id, "voucher_purchase")
+        else None
+    )
+    send_branch_event(
+        session,
+        router.branch_id,
+        "voucher_purchase",
+        (
+            "<b>Voucher purchased</b>\n"
+            f"Customer: {escape(customer_name or 'Unverified customer')}\n"
+            f"Phone: {escape(wallet.phone_number)}\n"
+            f"Package: {escape(str(package['profile']))}\n"
+            f"Amount: UGX {amount:,}\n"
+            f"Voucher: <code>{escape(voucher.voucher_code)}</code>\n"
+            f"Router: {escape(router.name)}\n"
+            f"Status: {escape(voucher.status)}"
+        ),
+    )
     return voucher
 
 

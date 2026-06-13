@@ -17,6 +17,7 @@ from app.models.withdrawal_challenge import WithdrawalChallenge
 from app.models.wallet import Wallet, WalletTransaction
 from app.models.branch_wallet import BranchWallet, BranchWalletTransaction
 from app.models.platform_ledger import PlatformLedgerEntry
+from app.models.telegram_connection import TelegramConnection
 
 __all__ = [
     "EmailVerification",
@@ -41,4 +42,5 @@ __all__ = [
     "BranchWallet",
     "BranchWalletTransaction",
     "PlatformLedgerEntry",
+    "TelegramConnection",
 ]

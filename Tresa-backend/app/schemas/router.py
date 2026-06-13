@@ -180,6 +180,17 @@ class RouterConfirmRequest(BaseModel):
     status: str = Field(default="ready", max_length=30)
 
 
+class RouterHeartbeatRequest(BaseModel):
+    token: str = Field(min_length=40, max_length=200)
+    mac: str = Field(min_length=12, max_length=30)
+    uptime: Optional[str] = Field(default=None, max_length=80)
+
+
+class RouterHeartbeatResponse(BaseModel):
+    status: str
+    server_time: datetime
+
+
 class RouterProvisionRequest(BaseModel):
     ppp_username: str = Field(min_length=1, max_length=120)
 
