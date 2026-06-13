@@ -182,14 +182,25 @@ def _hotspot_limit_to_routeros(limit: str) -> str | None:
     normalized = limit.strip().lower().replace(" ", "")
     if not normalized:
         return None
-    if normalized.endswith("hours"):
-        return f"{normalized.removesuffix('hours')}h"
-    if normalized.endswith("hour"):
-        return f"{normalized.removesuffix('hour')}h"
-    if normalized.endswith("days"):
-        return f"{normalized.removesuffix('days')}d"
-    if normalized.endswith("day"):
-        return f"{normalized.removesuffix('day')}d"
+
+    human_duration = re.fullmatch(
+        r"(\d+)(seconds?|minutes?|hours?|days?|weeks?|months?)",
+        normalized,
+    )
+    if human_duration:
+        value = int(human_duration.group(1))
+        unit = human_duration.group(2).rstrip("s")
+        if unit == "month":
+            return f"{value * 30}d"
+        suffixes = {
+            "second": "s",
+            "minute": "m",
+            "hour": "h",
+            "day": "d",
+            "week": "w",
+        }
+        return f"{value}{suffixes[unit]}"
+
     return normalized
 
 
