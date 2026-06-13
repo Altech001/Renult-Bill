@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from app.models.branch import Branch
 from app.models.staff import Staff
 from app.models.telegram_connection import TelegramConnection
+from app.core.config import settings
 from app.services.routers.credentials import decrypt_secret, encrypt_secret
 
 TELEGRAM_API = "https://api.telegram.org"
@@ -19,6 +20,17 @@ EVENT_FIELDS = {
     "withdrawal": "withdrawal_receipts",
     "router": "router_alerts",
     "router_hourly": "hourly_router_ping",
+    "ads_publish": "router_alerts",
+}
+EVENT_TEMPLATES = {
+    "voucher_purchase": {"emoji": "🎟️", "path": "/vouchers", "button": "View vouchers"},
+    "voucher_batch": {"emoji": "🧾", "path": "/vouchers", "button": "View voucher batch"},
+    "withdrawal": {"emoji": "💸", "path": "/withdrawals", "button": "View withdrawals"},
+    "router": {"emoji": "📡", "path": "/router", "button": "View routers"},
+    "router_hourly": {"emoji": "🟢", "path": "/router", "button": "View router status"},
+    "ads_publish": {"emoji": "📣", "path": "/settings/adsmob", "button": "Open AdsMob"},
+    "connection": {"emoji": "✅", "path": "/settings/telegram", "button": "Open Telegram settings"},
+    "test": {"emoji": "🔔", "path": "/settings/telegram", "button": "Open Renult"},
 }
 
 
@@ -92,17 +104,58 @@ def upsert_connection(
     return connection
 
 
-def send_connection_message(connection: TelegramConnection, text: str) -> None:
+def _event_message(event: str, text: str) -> tuple[str, dict[str, Any]]:
+    template = EVENT_TEMPLATES.get(
+        event,
+        {"emoji": "🔔", "path": "/", "button": "Open Renult Billing System"},
+    )
+    lines = text.strip().splitlines()
+    if lines:
+        lines[0] = f"{template['emoji']} {lines[0]}"
+    body = "\n".join(lines)
+    branded = (
+        f"{body}\n\n"
+        "<blockquote><b>Renult Billing System</b>\n"
+        "Hotspot operations, billing, campaigns and network monitoring.</blockquote>\n"
+        f"<i>Sent {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</i>"
+    )
+    button_url = f"{settings.renult_app_url}{template['path']}"
+    reply_markup = {
+        "inline_keyboard": [[{
+            "text": f"↗️ {template['button']}",
+            "url": button_url,
+        }]]
+    }
+    return branded, reply_markup
+
+
+def send_connection_message(
+    connection: TelegramConnection,
+    text: str,
+    reply_markup: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "chat_id": connection.chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     _request(
         decrypt_secret(connection.bot_token_encrypted),
         "sendMessage",
-        {
-            "chat_id": connection.chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
+        payload,
     )
+
+
+def send_connection_event(
+    connection: TelegramConnection,
+    event: str,
+    text: str,
+) -> None:
+    message, reply_markup = _event_message(event, text)
+    send_connection_message(connection, message, reply_markup)
 
 
 def send_user_event(
@@ -118,7 +171,7 @@ def send_user_event(
     if not connection or (preference and not getattr(connection, preference)):
         return False
     try:
-        send_connection_message(connection, text)
+        send_connection_event(connection, event, text)
         return True
     except TelegramError:
         return False
@@ -169,6 +222,14 @@ def branch_has_event_connection(session: Session, branch_id: UUID, event: str) -
     ).all()
     preference = EVENT_FIELDS.get(event)
     return any(not preference or getattr(connection, preference) for connection in connections)
+
+
+def user_has_event_connection(session: Session, user_id: UUID, event: str) -> bool:
+    connection = session.exec(
+        select(TelegramConnection).where(TelegramConnection.user_id == user_id)
+    ).first()
+    preference = EVENT_FIELDS.get(event)
+    return bool(connection and (not preference or getattr(connection, preference)))
 
 
 def verified_phone_name(phone_number: str) -> str | None:

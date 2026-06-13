@@ -319,11 +319,14 @@ export default function AdsMobPage() {
     if (!routerId) return;
     setPublishing(true);
     try {
+      if (selectedAd) {
+        await updateAd.mutateAsync({ adId: selectedAd.id, payload: draft });
+      }
       const captive = await renultApi.captivePortal.get(routerId);
       await renultApi.captivePortal.upsert(routerId, { ...captive, portal_template: "adsmob" });
       const result = await renultApi.captivePortal.deployR2(routerId);
       if (!result.success) throw new Error(result.error || "Deployment failed.");
-      toast.success("AdsMob portal published with campaign rotation.");
+      toast.success("AdsMob portal, assets, and media walled-garden rules published.");
     } catch (error) {
       toast.error(errorMessage(error, "Could not publish AdsMob."));
     } finally {

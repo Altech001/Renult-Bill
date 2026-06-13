@@ -15,7 +15,7 @@ from app.schemas.telegram import (
 from app.services.telegram import (
     TelegramError,
     discover_bot_chat,
-    send_connection_message,
+    send_connection_event,
     upsert_connection,
 )
 
@@ -54,8 +54,9 @@ def connect_telegram(
     try:
         bot, chat = discover_bot_chat(token)
         connection = upsert_connection(session, user.id, token, bot, chat)
-        send_connection_message(
+        send_connection_event(
             connection,
+            "connection",
             "<b>Renult connected</b>\nTelegram notifications are now active for this account.",
         )
     except TelegramError as exc:
@@ -91,8 +92,9 @@ def test_telegram(user: CurrentUser, session: SessionDep) -> TelegramActionRespo
     if not connection:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Connect a Telegram bot first")
     try:
-        send_connection_message(
+        send_connection_event(
             connection,
+            "test",
             "<b>Renult test notification</b>\nYour Telegram connection is working.",
         )
     except TelegramError as exc:
@@ -109,4 +111,3 @@ def disconnect_telegram(user: CurrentUser, session: SessionDep) -> TelegramActio
         session.delete(connection)
         session.commit()
     return TelegramActionResponse(success=True, message="Telegram disconnected")
-

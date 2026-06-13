@@ -19,6 +19,7 @@ from app.models.captive_portal import CaptivePortal
 from app.models.branch import Branch
 from app.models.notification import Notification
 from app.models.portal_payment import PortalPayment
+from app.models.portal_ad import PortalAd
 from app.models.router import Router
 from app.models.staff import Staff
 from app.models.user import User
@@ -405,7 +406,8 @@ def _create_and_provision_voucher(
         "voucher_purchase",
         (
             "<b>Voucher purchased</b>\n"
-            f"Customer: {escape(customer_name or 'Unverified customer')}\n"
+            f"Customer: {escape(customer_name or 'Subscriber name unavailable')}\n"
+            f"Identity: {'✅ Verified subscriber name' if customer_name else '⚠️ Name could not be verified'}\n"
             f"Phone: {escape(wallet.phone_number)}\n"
             f"Package: {escape(str(package['profile']))}\n"
             f"Amount: UGX {amount:,}\n"
@@ -658,6 +660,21 @@ def _render_portal_file(path: Path, router: Router) -> bytes:
 # before the visitor authenticates.
 _TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS: dict[str, list[str]] = {
     "auroaa": ["fonts.googleapis.com", "fonts.gstatic.com", "hspotagent.com"],
+    "adsmob": [
+        "youtube.com",
+        "youtu.be",
+        "youtube-nocookie.com",
+        "googlevideo.com",
+        "youtubei.googleapis.com",
+        "googleapis.com",
+        "ytimg.com",
+        "ggpht.com",
+        "googleusercontent.com",
+        "google.com",
+        "gstatic.com",
+        "doubleclick.net",
+        "googleadservices.com",
+    ],
 }
 
 # Mobile money providers used by the Renult Pay gateway. Some MTN/Airtel
@@ -688,12 +705,40 @@ def _walled_garden_host_patterns(host: str) -> list[str]:
     return [host, f"*.{host}"]
 
 
-def _walled_garden_hosts_for_template(template: str) -> list[str]:
+def _adsmob_campaign_hosts(session: Session | None, router: Router) -> list[str]:
+    if session is None:
+        return []
+    ads = session.exec(
+        select(PortalAd)
+        .where(PortalAd.router_id == router.id)
+        .where(PortalAd.enabled.is_(True))
+    ).all()
+    hosts: list[str] = []
+    for ad in ads:
+        for url in (ad.media_url, ad.target_url):
+            host = _host_from_url(url or "")
+            if host and host not in hosts:
+                hosts.append(host)
+    return hosts
+
+
+def _walled_garden_hosts_for_template(
+    template: str,
+    router: Router,
+    session: Session | None = None,
+) -> list[str]:
     api_host = _host_from_url(_portal_api_base())
     payment_host = _host_from_url(settings.renult_pay_base_url)
     r2_host = _host_from_url(settings.r2_public_base_url or settings.r2_endpoint_url or "")
 
-    base_hosts = [api_host, payment_host, r2_host, *_MOBILE_MONEY_WALLED_GARDEN_HOSTS]
+    campaign_hosts = _adsmob_campaign_hosts(session, router) if template == "adsmob" else []
+    base_hosts = [
+        api_host,
+        payment_host,
+        r2_host,
+        *_MOBILE_MONEY_WALLED_GARDEN_HOSTS,
+        *campaign_hosts,
+    ]
     hosts: list[str] = []
     for host in (*base_hosts, *_TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS.get(template, [])):
         for pattern in _walled_garden_host_patterns(host):
@@ -754,7 +799,12 @@ def _sync_walled_garden_scheduler(api: Any, host_patterns: list[str]) -> None:
         scheduler_resource.add(name=_WALLED_GARDEN_SYNC_NAME, **{"start-time": "startup", **scheduler_params})
 
 
-def _set_hotspot_portal_configuration(router: Router, directory: str, template: str = "renault") -> tuple[list[str], list[str]]:
+def _set_hotspot_portal_configuration(
+    router: Router,
+    directory: str,
+    template: str = "renault",
+    session: Session | None = None,
+) -> tuple[list[str], list[str]]:
     updated_profiles: list[str] = []
     allowed_hosts: list[str] = []
     with router_connection(router) as api:
@@ -786,7 +836,7 @@ def _set_hotspot_portal_configuration(router: Router, directory: str, template: 
             for item in walled_garden.get()
             if item.get("dst-host")
         }
-        for host_pattern in _walled_garden_hosts_for_template(template):
+        for host_pattern in _walled_garden_hosts_for_template(template, router, session):
             if host_pattern.lower() not in existing_hosts:
                 walled_garden.add(action="allow", **{"dst-host": host_pattern})
                 existing_hosts.add(host_pattern.lower())
@@ -818,6 +868,12 @@ def _portal_file_content_type(path: Path) -> str:
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".png": "image/png",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+        ".webp": "image/webp",
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".ogg": "video/ogg",
         ".txt": "text/plain; charset=utf-8",
     }.get(path.suffix.lower(), "application/octet-stream")
 
@@ -841,6 +897,16 @@ def _portal_template_files(template_dir: Path, router: Router) -> list[tuple[str
     return files
 
 
+def _validate_portal_template(template_dir: Path, template: str) -> str | None:
+    required = {"login.html", "alogin.html", "error.html", "logout.html", "status.html"}
+    if template in {"renault", "adsmob", "classic", "modern", "blue_modern", "brown_cards"}:
+        required.update({"md5.js", "portal.css"})
+    missing = sorted(name for name in required if not (template_dir / name).is_file())
+    if missing:
+        return f"Portal template '{template}' is missing required files: {', '.join(missing)}"
+    return None
+
+
 def push_captive_portal_to_r2(
     router: Router,
     template: str = "renault",
@@ -850,6 +916,9 @@ def push_captive_portal_to_r2(
     template_dir = PORTAL_ROOT / template
     if not template_dir.exists():
         return {"success": False, "files": {}, "error": f"Portal template '{template}' not found"}
+    validation_error = _validate_portal_template(template_dir, template)
+    if validation_error:
+        return {"success": False, "files": {}, "error": validation_error}
 
     files: dict[str, str] = {}
     try:
@@ -863,7 +932,11 @@ def push_captive_portal_to_r2(
     return {"success": True, "files": files, "error": None}
 
 
-def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -> dict[str, Any]:
+def deploy_captive_portal_via_fetch(
+    router: Router,
+    template: str = "renault",
+    session: Session | None = None,
+) -> dict[str, Any]:
     """
     Push the rendered captive portal to R2, then have the router pull each file
     down with `/tool fetch` over its API connection and point the hotspot
@@ -936,7 +1009,12 @@ def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -
         }
 
     try:
-        updated_profiles, allowed_hosts = _set_hotspot_portal_configuration(router, router_directory, template)
+        updated_profiles, allowed_hosts = _set_hotspot_portal_configuration(
+            router,
+            router_directory,
+            template,
+            session,
+        )
     except Exception as exc:
         return {
             "success": False,
@@ -949,6 +1027,7 @@ def deploy_captive_portal_via_fetch(router: Router, template: str = "renault") -
 
     diagnostics = {
         "walled_garden_hosts": ",".join(allowed_hosts) or "none",
+        "walled_garden_script": _WALLED_GARDEN_SYNC_NAME,
         "updated_hotspot_profiles": ",".join(updated_profiles) or "none",
     }
     if fetch_errors:
@@ -983,6 +1062,7 @@ def push_captive_files_to_mikrotik(
     ftp_username: str | None = None,
     ftp_password: str | None = None,
     ftp_port: int | None = None,
+    session: Session | None = None,
 ) -> dict[str, Any]:
     template_dir = PORTAL_ROOT / template
     if not template_dir.exists():
@@ -992,6 +1072,16 @@ def push_captive_files_to_mikrotik(
             "deployed_directory": None,
             "updated_profiles": [],
             "error": f"Portal template '{template}' not found",
+            "diagnostics": {},
+        }
+    validation_error = _validate_portal_template(template_dir, template)
+    if validation_error:
+        return {
+            "success": False,
+            "pushed_files": [],
+            "deployed_directory": None,
+            "updated_profiles": [],
+            "error": validation_error,
             "diagnostics": {},
         }
 
@@ -1068,9 +1158,15 @@ def push_captive_files_to_mikrotik(
                     ftp.storbinary(f"STOR {remote_name}", io.BytesIO(_render_portal_file(path, router)))
                     pushed_files.append(remote_name)
 
-        updated_profiles, allowed_hosts = _set_hotspot_portal_configuration(router, deployed_directory, template)
+        updated_profiles, allowed_hosts = _set_hotspot_portal_configuration(
+            router,
+            deployed_directory,
+            template,
+            session,
+        )
         diagnostics["updated_hotspot_profiles"] = ",".join(updated_profiles) or "none"
         diagnostics["walled_garden_hosts"] = ",".join(allowed_hosts) or "none"
+        diagnostics["walled_garden_script"] = _WALLED_GARDEN_SYNC_NAME
         if not updated_profiles:
             return {
                 "success": False,

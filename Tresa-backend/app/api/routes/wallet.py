@@ -31,7 +31,11 @@ from app.schemas.wallet import (
 from app.services import wallet as wallet_svc
 from app.services.email import send_withdrawal_code_email, send_withdrawal_receipt_email
 from app.services.security import hash_code
-from app.services.telegram import send_user_event
+from app.services.telegram import (
+    send_user_event,
+    user_has_event_connection,
+    verified_phone_name,
+)
 
 router = APIRouter(prefix="/wallets", tags=["Wallets"])
 
@@ -234,6 +238,11 @@ def confirm_withdrawal(
     except Exception:
         receipt_email_sent = False
 
+    verified_recipient = (
+        verified_phone_name(challenge.recipient_phone)
+        if user_has_event_connection(session, user.id, "withdrawal")
+        else None
+    )
     send_user_event(
         session,
         user.id,
@@ -241,7 +250,8 @@ def confirm_withdrawal(
         (
             "<b>Withdrawal receipt</b>\n"
             f"Branch: {escape(branch.name)}\n"
-            f"Recipient: {escape(challenge.recipient_name)}\n"
+            f"Recipient: {escape(verified_recipient or challenge.recipient_name)}\n"
+            f"Identity: {'✅ Verified subscriber name' if verified_recipient else '⚠️ Name could not be verified'}\n"
             f"Phone: {escape(challenge.recipient_phone)}\n"
             f"Provider: {escape(challenge.provider)}\n"
             f"Amount: UGX {txn.amount:,}\n"

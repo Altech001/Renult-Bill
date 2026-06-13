@@ -70,6 +70,7 @@ class Settings:
     renult_pay_base_url: str = os.getenv("RENULT_PAY_BASE_URL", "https://renult-pay.vercel.app").rstrip("/")
     renult_pay_api_key: str | None = os.getenv("RENULT_PAY_API_KEY")
     renult_pay_timeout_seconds: float = float(os.getenv("RENULT_PAY_TIMEOUT_SECONDS", "20"))
+    renult_app_url: str = os.getenv("RENULT_APP_URL", "https://renult.app").rstrip("/")
 
 
 settings = Settings()

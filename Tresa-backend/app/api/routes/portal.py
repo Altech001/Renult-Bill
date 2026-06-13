@@ -1,4 +1,5 @@
 from datetime import datetime
+from html import escape
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -8,6 +9,7 @@ from app.api.deps import CurrentUser
 from app.db.session import SessionDep
 from app.models.branch import Branch
 from app.models.captive_portal import CaptivePortal
+from app.models.portal_ad import PortalAd
 from app.models.router import Router
 from app.models.staff import Staff
 from app.models.voucher_purchase import VoucherPurchase
@@ -35,8 +37,39 @@ from app.services.portal import (
 )
 from app.services.routers.Packages import get_router_packages
 from app.services.storage import refresh_logo_url
+from app.services.telegram import send_branch_event
 
 router = APIRouter(tags=["Portal"])
+
+
+def notify_adsmob_publish(
+    session: SessionDep,
+    db_router: Router,
+    file_count: int,
+    diagnostics: dict[str, str],
+) -> int:
+    active_ads = session.exec(
+        select(PortalAd)
+        .where(PortalAd.router_id == db_router.id)
+        .where(PortalAd.enabled.is_(True))
+    ).all()
+    walled_hosts = [
+        host
+        for host in diagnostics.get("walled_garden_hosts", "").split(",")
+        if host
+    ]
+    return send_branch_event(
+        session,
+        db_router.branch_id,
+        "ads_publish",
+        (
+            "<b>AdsMob portal published</b>\n"
+            f"Router: <b>{escape(db_router.name)}</b>\n"
+            f"Active ads: <b>{len(active_ads)}</b>\n"
+            f"Portal files: <b>{file_count}</b>\n"
+            f"Walled-garden hosts: <b>{len(walled_hosts)}</b>"
+        ),
+    )
 
 
 def check_router_ownership(session: SessionDep, router_id: UUID, user_id: UUID) -> Router:
@@ -240,6 +273,7 @@ def push_router_captive(
         ftp_username=payload.ftp_username,
         ftp_password=payload.ftp_password,
         ftp_port=payload.ftp_port,
+        session=session,
     )
 
     if captive and result["success"]:
@@ -248,6 +282,15 @@ def push_router_captive(
         captive.updated_at = datetime.utcnow()
         session.add(captive)
         session.commit()
+
+    if result["success"] and template == "adsmob":
+        recipients = notify_adsmob_publish(
+            session,
+            db_router,
+            len(result["pushed_files"]),
+            result.get("diagnostics", {}),
+        )
+        result.setdefault("diagnostics", {})["telegram_recipients"] = str(recipients)
 
     return PushCaptiveResponse(
         success=result["success"],
@@ -271,7 +314,7 @@ def deploy_router_captive_r2(
     db_router = check_router_ownership(session, router_id, user.id)
     captive = session.exec(select(CaptivePortal).where(CaptivePortal.router_id == db_router.id)).first()
     template = captive.portal_template if captive else "renault"
-    result = deploy_captive_portal_via_fetch(db_router, template)
+    result = deploy_captive_portal_via_fetch(db_router, template, session=session)
 
     if captive and result["success"]:
         captive.last_pushed_at = datetime.utcnow()
@@ -279,6 +322,15 @@ def deploy_router_captive_r2(
         captive.updated_at = datetime.utcnow()
         session.add(captive)
         session.commit()
+
+    if result["success"] and template == "adsmob":
+        recipients = notify_adsmob_publish(
+            session,
+            db_router,
+            len(result["fetched_files"]),
+            result.get("diagnostics", {}),
+        )
+        result.setdefault("diagnostics", {})["telegram_recipients"] = str(recipients)
 
     return CaptivePortalDeployResponse(
         success=result["success"],

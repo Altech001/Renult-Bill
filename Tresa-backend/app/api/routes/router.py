@@ -333,7 +333,11 @@ def update_router(
             captive.updated_at = datetime.utcnow()
             session.add(captive)
             session.commit()
-        push_captive_files_to_mikrotik(db_router, captive.portal_template if captive else "renault")
+        push_captive_files_to_mikrotik(
+            db_router,
+            captive.portal_template if captive else "renault",
+            session=session,
+        )
 
     return serialize_router(db_router)
 
