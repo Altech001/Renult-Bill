@@ -23,6 +23,7 @@ import {
     LucideTouchpad,
     PackagePlus,
     Plus,
+    Radio,
     RefreshCcwDotIcon,
     Router as RouterIcon,
     Search,
@@ -43,6 +44,7 @@ import {
     useRouterStatus,
     usePingRouter,
     useRebootRouter,
+    useDeployRouterHeartbeat,
     useUpdateRouter
 } from "@/hooks/useRouters";
 import {
@@ -279,6 +281,7 @@ export default function RoutersIndex() {
 
     const pingRouter = usePingRouter();
     const rebootRouter = useRebootRouter();
+    const deployHeartbeat = useDeployRouterHeartbeat();
 
     const handlePingRouter = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -301,6 +304,17 @@ export default function RoutersIndex() {
             loading: "Sending reboot command to MikroTik...",
             success: (data) => data.message,
             error: (error) => getErrorMessage(error, "Router reboot failed"),
+        });
+    };
+
+    const handleSetPing = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        toast.promise(deployHeartbeat.mutateAsync(id), {
+            loading: "Installing heartbeat script on the MikroTik...",
+            success: (data) => data.success
+                ? data.message
+                : `${data.message}${data.error ? ` (${data.error})` : ""}`,
+            error: (error) => getErrorMessage(error, "Could not deploy the heartbeat script"),
         });
     };
 
@@ -461,6 +475,20 @@ export default function RoutersIndex() {
                                 >
                                     <LucideTouchpad className="w-3.5 h-3.5 mr-1" />
                                     Ping Test
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => handleSetPing(selectedRouter.id, e)}
+                                    disabled={deployHeartbeat.isPending}
+                                    className="h-9 text-xs font-bold border-primary/50 text-primary hover:bg-primary/5"
+                                >
+                                    {deployHeartbeat.isPending ? (
+                                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                    ) : (
+                                        <Radio className="w-3.5 h-3.5 mr-1.5" />
+                                    )}
+                                    Set Ping
                                 </Button>
                                 <Button
                                     variant="destructive"

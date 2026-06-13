@@ -191,6 +191,18 @@ class RouterHeartbeatResponse(BaseModel):
     server_time: datetime
 
 
+class RouterDeployHeartbeatRequest(BaseModel):
+    api_base_url: str = Field(default="https://renult.vercel.app", min_length=8, max_length=500)
+
+
+class RouterDeployHeartbeatResponse(BaseModel):
+    success: bool
+    router_id: UUID
+    router_name: str
+    message: str
+    error: Optional[str] = None
+
+
 class RouterProvisionRequest(BaseModel):
     ppp_username: str = Field(min_length=1, max_length=120)
 

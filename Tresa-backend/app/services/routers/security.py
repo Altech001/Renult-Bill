@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.models.router import Router
 from app.core.config import settings
 from app.services.routers.concentrator import heartbeat_token, registration_token
+from app.services.routers.routeros import router_connection
 
 
 MIN_DYNAMIC_API_PORT = int(os.getenv("ROUTER_API_PORT_MIN", "49152"))
@@ -366,3 +367,66 @@ def build_secure_setup_script(
     :error "Tresa setup failed"
 }}
 """
+
+
+def build_heartbeat_script_source(router: Router, api_base_url: str) -> str:
+    """RouterOS source for the TresaHeartbeat script, bound to this router's own heartbeat token.
+
+    Each router gets a token derived from its own router_id (heartbeat_token), so a
+    script copied between routers can never report heartbeats under another router's id.
+    """
+    api_base_url = api_base_url.rstrip("/")
+    if not api_base_url.startswith(("http://", "https://")):
+        raise ValueError("API base URL must start with http:// or https://")
+    api_url = _routeros_quote(api_base_url)
+    heartbeat = _routeros_quote(heartbeat_token(router.id))
+
+    source = r"""
+:local heartbeatApi "__API_URL__"
+:local heartbeatSecret "__HEARTBEAT_TOKEN__"
+:local heartbeatMac ""
+:local heartbeatWan [/interface ethernet find where default-name="ether1"]
+:if ([:len $heartbeatWan] = 0) do={ :set heartbeatWan [/interface ethernet find where name="ether1"] }
+:if ([:len $heartbeatWan] > 0) do={ :set heartbeatMac [/interface ethernet get $heartbeatWan mac-address] }
+:local heartbeatUptime [/system resource get uptime]
+:local heartbeatBody ("{\"token\":\"" . $heartbeatSecret . "\",\"mac\":\"" . $heartbeatMac . "\",\"uptime\":\"" . $heartbeatUptime . "\"}")
+:do {
+    /tool fetch url=($heartbeatApi . "/api/routers/heartbeat") http-method=post http-data=$heartbeatBody http-header-field="Content-Type: application/json" output=none
+} on-error={
+    :log warning "Tresa heartbeat could not reach backend"
+}
+"""
+    return source.replace("__API_URL__", api_url).replace("__HEARTBEAT_TOKEN__", heartbeat).strip()
+
+
+def deploy_heartbeat_monitor(router: Router, api_base_url: str) -> None:
+    """Install/refresh the TresaHeartbeat script and its one-minute scheduler over the API.
+
+    Lets routers that were provisioned before the heartbeat feature existed start
+    sending the one-minute backend heartbeat without re-running the full secure
+    setup script (which also resets the firewall, API access and tunnel).
+    """
+    source = build_heartbeat_script_source(router, api_base_url)
+    with router_connection(router) as api:
+        scripts = api.get_resource("/system/script")
+        for existing in scripts.get(name="TresaHeartbeat"):
+            scripts.remove(id=existing["id"])
+        scripts.add(name="TresaHeartbeat", policy="read,write,test", source=source)
+
+        schedulers = api.get_resource("/system/scheduler")
+        for existing in schedulers.get(name="RunTresaHeartbeat"):
+            schedulers.remove(id=existing["id"])
+        schedulers.add(**{
+            "name": "RunTresaHeartbeat",
+            "start-time": "startup",
+            "interval": "1m",
+            "on-event": "/system script run TresaHeartbeat",
+            "policy": "read,write,test",
+        })
+
+        created = scripts.get(name="TresaHeartbeat")
+        if created:
+            try:
+                scripts.call("run", {"number": created[0]["id"]})
+            except Exception:
+                pass

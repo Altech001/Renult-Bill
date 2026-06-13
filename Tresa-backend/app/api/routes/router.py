@@ -23,6 +23,8 @@ from app.schemas.hotspot_provision import (
 from app.schemas.router import (
     RouterActiveUsersResponse,
     RouterCreate,
+    RouterDeployHeartbeatRequest,
+    RouterDeployHeartbeatResponse,
     RouterFeaturesResponse,
     RouterPingRequest,
     RouterPingResponse,
@@ -76,6 +78,7 @@ from app.services.notification import notify
 from app.services.routers.security import (
     CHR_TUNNEL_ADDRESS,
     build_secure_setup_script,
+    deploy_heartbeat_monitor,
     generate_api_password,
     generate_api_port,
     generate_api_username,
@@ -852,6 +855,34 @@ def router_reboot(
         router_name=db_router.name,
         message=message,
         error=result["error"],
+    )
+
+
+@router.post("/routers/{router_id}/deploy-heartbeat", response_model=RouterDeployHeartbeatResponse)
+def deploy_router_heartbeat(
+    router_id: UUID,
+    payload: RouterDeployHeartbeatRequest,
+    user: CurrentUser,
+    session: SessionDep,
+) -> RouterDeployHeartbeatResponse:
+    db_router = get_router_with_ownership(session, router_id, user.id)
+    try:
+        deploy_heartbeat_monitor(db_router, payload.api_base_url)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        return RouterDeployHeartbeatResponse(
+            success=False,
+            router_id=db_router.id,
+            router_name=db_router.name,
+            message="Could not reach the router's API to install the heartbeat scheduler.",
+            error=str(exc),
+        )
+    return RouterDeployHeartbeatResponse(
+        success=True,
+        router_id=db_router.id,
+        router_name=db_router.name,
+        message="Heartbeat script installed. The router will report status every minute.",
     )
 
 

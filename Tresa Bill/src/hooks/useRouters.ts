@@ -191,6 +191,16 @@ export function useRebootRouter() {
   });
 }
 
+export function useDeployRouterHeartbeat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (routerId: string) => renultApi.routers.deployHeartbeat(routerId),
+    onSuccess: (_, routerId) => {
+      queryClient.invalidateQueries({ queryKey: ["routerStatus", routerId] });
+    },
+  });
+}
+
 export function useTestRouterConnection() {
   return useMutation({
     mutationFn: (payload: RouterTestConnectionRequest) =>

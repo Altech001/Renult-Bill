@@ -326,6 +326,14 @@ export interface RouterRebootResponse {
   error: string | null;
 }
 
+export interface RouterDeployHeartbeatResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  message: string;
+  error: string | null;
+}
+
 export interface RouterTestConnectionRequest {
   host: string;
   port: number;
@@ -1061,6 +1069,11 @@ export const renultApi = {
       apiRequest<RouterPingResponse>(`/routers/${routerId}/ping`, { method: "POST", body: JSON.stringify(payload) }),
     reboot: (routerId: string) =>
       apiRequest<RouterRebootResponse>(`/routers/${routerId}/reboot`, { method: "POST" }),
+    deployHeartbeat: (routerId: string) =>
+      apiRequest<RouterDeployHeartbeatResponse>(`/routers/${routerId}/deploy-heartbeat`, {
+        method: "POST",
+        body: JSON.stringify({ api_base_url: API_BASE_URL }),
+      }),
     testConnection: (payload: RouterTestConnectionRequest) =>
       apiRequest<RouterTestConnectionResponse>("/routers/test-connection", { method: "POST", body: JSON.stringify(payload) }),
     hardware: (routerId: string) =>
