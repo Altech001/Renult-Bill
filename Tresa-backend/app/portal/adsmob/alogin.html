@@ -167,7 +167,7 @@
     }
 
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", API_BASE + "/portal/" + encodeURIComponent(ROUTER_ID) + "/ads", true);
+    xhr.open("GET", API_BASE + "/portal/" + encodeURIComponent(ROUTER_ID) + "/ads?authenticated=true", true);
     xhr.timeout = 8000;
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;

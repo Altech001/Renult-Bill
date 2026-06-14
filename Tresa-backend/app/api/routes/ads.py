@@ -38,8 +38,14 @@ def owned_ad(session: SessionDep, router_id: UUID, ad_id: UUID) -> PortalAd:
 
 
 @router.get("/portal/{router_name}/ads", response_model=PortalAdFeedResponse)
-def public_portal_ads(router_name: str, session: SessionDep) -> PortalAdFeedResponse:
-    return PortalAdFeedResponse(ads=get_public_router_ads(session, router_name))
+def public_portal_ads(
+    router_name: str,
+    session: SessionDep,
+    authenticated: bool = Query(default=False),
+) -> PortalAdFeedResponse:
+    return PortalAdFeedResponse(
+        ads=get_public_router_ads(session, router_name, authenticated=authenticated)
+    )
 
 
 @router.post(

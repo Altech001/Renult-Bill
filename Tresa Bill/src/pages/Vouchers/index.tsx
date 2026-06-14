@@ -77,9 +77,17 @@ interface Voucher {
     duration: string;
     pricePaid: number;
     purchaseTime: string;
-    status: 'Active' | 'Expired' | 'Unactivated' | 'Sync Issue';
+    status: 'Online' | 'Offline' | 'Expired' | 'Unactivated' | 'Sync Issue';
+    activatedAt?: string;
+    expiresAt?: string;
     type: 'Single' | 'Bulk';
     batchId?: string;
+}
+
+function registryStatus(status: string): Voucher["status"] {
+    if (status === "ONLINE") return "Online";
+    if (status === "OFFLINE" || status === "ACTIVE") return "Offline";
+    return voucherUiStatus(status) as Exclude<Voucher["status"], "Online" | "Offline">;
 }
 
 type VoucherCodeFormat = 'alphanumeric-upper' | 'numeric' | 'alphanumeric-mixed';
@@ -174,7 +182,9 @@ export default function VouchersIndex() {
                 duration: voucher.profile,
                 pricePaid: voucher.amount,
                 purchaseTime: voucher.created_at.replace('T', ' ').substring(0, 19),
-                status: voucherUiStatus(voucher.status),
+                status: registryStatus(voucher.status),
+                activatedAt: voucher.activated_at?.replace('T', ' ').substring(0, 19),
+                expiresAt: voucher.expires_at?.replace('T', ' ').substring(0, 19),
                 type: voucher.payment_reference?.startsWith("BAT-") ? "Bulk" : "Single",
                 batchId: voucher.payment_reference?.startsWith("BAT-") ? voucher.payment_reference : undefined,
             }));
@@ -237,7 +247,7 @@ export default function VouchersIndex() {
                     duration: voucherJobContext.duration,
                     pricePaid: voucherJobContext.price,
                     purchaseTime: voucher.created_at.replace('T', ' ').substring(0, 19),
-                    status: voucherUiStatus(voucher.status),
+                    status: registryStatus(voucher.status),
                     type: "Bulk",
                     batchId: voucherJobContext.batchId,
                 }));
@@ -258,7 +268,7 @@ export default function VouchersIndex() {
                         duration: voucherJobContext?.duration || "",
                         pricePaid: voucherJobContext?.price || 0,
                         purchaseTime: created.created_at.replace('T', ' ').substring(0, 19),
-                        status: voucherUiStatus(created.status),
+                        status: registryStatus(created.status),
                         type: "Single",
                     };
                     setPrintBatchRef(null);
@@ -386,6 +396,13 @@ export default function VouchersIndex() {
 
     // Filtering Logic
     const filteredVouchers = useMemo(() => {
+        const statusOrder: Record<Voucher["status"], number> = {
+            Online: 0,
+            Offline: 1,
+            Unactivated: 2,
+            "Sync Issue": 3,
+            Expired: 4,
+        };
         return vouchers.filter(voucher => {
             const matchesSearch =
                 voucher.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -396,7 +413,10 @@ export default function VouchersIndex() {
             const matchesStatus = filterStatus === "all" || voucher.status === filterStatus;
 
             return matchesSearch && matchesPackage && matchesStatus;
-        });
+        }).sort((a, b) =>
+            statusOrder[a.status] - statusOrder[b.status]
+            || (b.expiresAt || b.purchaseTime).localeCompare(a.expiresAt || a.purchaseTime)
+        );
     }, [vouchers, searchQuery, filterPackage, filterStatus]);
 
     const filteredSingleVouchers = useMemo(
@@ -421,7 +441,8 @@ export default function VouchersIndex() {
                 createdAt: items[0].purchaseTime,
                 quantity: items.length,
                 totalValue: items.reduce((sum, item) => sum + item.pricePaid, 0),
-                active: items.filter((item) => item.status === "Active").length,
+                online: items.filter((item) => item.status === "Online").length,
+                offline: items.filter((item) => item.status === "Offline").length,
                 unactivated: items.filter((item) => item.status === "Unactivated").length,
                 expired: items.filter((item) => item.status === "Expired").length,
                 syncIssue: items.filter((item) => item.status === "Sync Issue").length,
@@ -433,7 +454,8 @@ export default function VouchersIndex() {
                     || batch.packageName.toLowerCase().includes(query);
                 const matchesPackage = filterPackage === "all" || batch.packageName === filterPackage;
                 const matchesStatus = filterStatus === "all"
-                    || (filterStatus === "Active" && batch.active > 0)
+                    || (filterStatus === "Online" && batch.online > 0)
+                    || (filterStatus === "Offline" && batch.offline > 0)
                     || (filterStatus === "Unactivated" && batch.unactivated > 0)
                     || (filterStatus === "Expired" && batch.expired > 0)
                     || (filterStatus === "Sync Issue" && batch.syncIssue > 0);
@@ -637,8 +659,10 @@ export default function VouchersIndex() {
 
     const getStatusBadge = (status: Voucher['status']) => {
         switch (status) {
-            case "Active":
-                return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+            case "Online":
+                return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+            case "Offline":
+                return "bg-blue-500/10 text-blue-600 border-blue-500/20";
             case "Expired":
                 return "bg-slate-500/10 text-slate-500 border-slate-500/20";
             case "Unactivated":
@@ -982,7 +1006,8 @@ export default function VouchersIndex() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All Statuses</SelectItem>
-                                            <SelectItem value="Active">Active</SelectItem>
+                                            <SelectItem value="Online">Online</SelectItem>
+                                            <SelectItem value="Offline">Offline</SelectItem>
                                             <SelectItem value="Unactivated">Unactivated</SelectItem>
                                             <SelectItem value="Expired">Expired</SelectItem>
                                             <SelectItem value="Sync Issue">Sync Issue</SelectItem>
@@ -1048,7 +1073,8 @@ export default function VouchersIndex() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All Statuses</SelectItem>
-                                            <SelectItem value="Active">Active</SelectItem>
+                                            <SelectItem value="Online">Online</SelectItem>
+                                            <SelectItem value="Offline">Offline</SelectItem>
                                             <SelectItem value="Unactivated">Unactivated</SelectItem>
                                             <SelectItem value="Expired">Expired</SelectItem>
                                             <SelectItem value="Sync Issue">Sync Issue</SelectItem>

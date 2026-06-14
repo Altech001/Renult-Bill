@@ -12,7 +12,9 @@ export interface RegistryVoucher {
   packageName: string;
   pricePaid: number;
   purchaseTime: string;
-  status: "Active" | "Expired" | "Unactivated" | "Sync Issue";
+  status: "Online" | "Offline" | "Expired" | "Unactivated" | "Sync Issue";
+  activatedAt?: string;
+  expiresAt?: string;
 }
 
 export interface RegistryBatch {
@@ -22,7 +24,8 @@ export interface RegistryBatch {
   createdAt: string;
   quantity: number;
   totalValue: number;
-  active: number;
+  online: number;
+  offline: number;
   unactivated: number;
   expired: number;
   syncIssue: number;
@@ -88,7 +91,8 @@ export function BulkBatchesTable({
                   <TableCell className="text-xs font-bold">UGX {batch.totalValue.toLocaleString()}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {batch.active > 0 && <Badge className="bg-emerald-500/10 text-emerald-600 border-none text-[9px]">{batch.active} active</Badge>}
+                      {batch.online > 0 && <Badge className="bg-emerald-500/10 text-emerald-600 border-none text-[9px]">{batch.online} online</Badge>}
+                      {batch.offline > 0 && <Badge className="bg-blue-500/10 text-blue-600 border-none text-[9px]">{batch.offline} offline</Badge>}
                       {batch.unactivated > 0 && <Badge className="bg-amber-500/10 text-amber-600 border-none text-[9px]">{batch.unactivated} ready</Badge>}
                       {batch.expired > 0 && <Badge className="bg-slate-500/10 text-slate-600 border-none text-[9px]">{batch.expired} expired</Badge>}
                       {batch.syncIssue > 0 && <Badge className="bg-orange-500/10 text-orange-600 border-none text-[9px]">{batch.syncIssue} sync issue</Badge>}
@@ -172,6 +176,8 @@ export function IndividualVouchersTable({
                 <TableHead className="text-xs font-bold">Customer</TableHead>
                 <TableHead className="text-xs font-bold">Price</TableHead>
                 <TableHead className="text-xs font-bold">Created</TableHead>
+                <TableHead className="text-xs font-bold">Activated</TableHead>
+                <TableHead className="text-xs font-bold">Expires</TableHead>
                 <TableHead className="text-xs font-bold">Status</TableHead>
                 <TableHead className="text-right text-xs font-bold">Actions</TableHead>
               </TableRow>
@@ -179,7 +185,7 @@ export function IndividualVouchersTable({
             <TableBody>
               {singles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-xs text-muted-foreground">
+                  <TableCell colSpan={10} className="py-10 text-center text-xs text-muted-foreground">
                     <Info className="w-5 h-5 mx-auto mb-2 opacity-60" />
                     No individual vouchers match the current filters.
                   </TableCell>
@@ -204,6 +210,8 @@ export function IndividualVouchersTable({
                     <TableCell className="font-mono text-xs">{voucher.phone || "Not linked"}</TableCell>
                     <TableCell className="text-xs font-bold">UGX {voucher.pricePaid.toLocaleString()}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{voucher.purchaseTime}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{voucher.activatedAt || "Not activated"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{voucher.expiresAt || "Starts on first use"}</TableCell>
                     <TableCell>
                       <Badge className={cn("text-[10px] px-2 py-0 border-none", getStatusClass(voucher.status))}>{voucher.status}</Badge>
                     </TableCell>

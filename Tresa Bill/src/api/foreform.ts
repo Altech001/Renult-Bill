@@ -606,6 +606,8 @@ export interface VoucherBatchItemResponse {
   status: string;
   payment_reference: string | null;
   created_at: string;
+  activated_at: string | null;
+  expires_at: string | null;
 }
 
 export interface VoucherBatchResponse {

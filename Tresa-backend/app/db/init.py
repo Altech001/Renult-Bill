@@ -62,6 +62,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _ensure_staff_columns()
     _ensure_router_columns()
+    _ensure_voucher_purchase_columns()
     _ensure_portal_ad_columns()
     _ensure_branch_wallet_transaction_columns()
 
@@ -160,6 +161,21 @@ def _ensure_router_columns() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_router_mac_address_unique "
             "ON router (mac_address) WHERE mac_address IS NOT NULL"
         ))
+
+
+def _ensure_voucher_purchase_columns() -> None:
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("voucherpurchase"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("voucherpurchase")}
+    column_types = {
+        "activated_at": "TIMESTAMP",
+        "expires_at": "TIMESTAMP",
+    }
+    with engine.begin() as conn:
+        for name, sql_type in column_types.items():
+            if name not in columns:
+                conn.execute(sa.text(f"ALTER TABLE voucherpurchase ADD COLUMN {name} {sql_type}"))
 
 
 def _ensure_portal_ad_columns() -> None:

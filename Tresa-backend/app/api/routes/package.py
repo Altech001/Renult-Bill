@@ -52,6 +52,7 @@ from app.services.routers.Packages import (
     update_router_package,
 )
 from app.services.telegram import send_branch_event
+from app.services.voucher_lifecycle import router_uptime_has_usage, update_voucher_lifecycle
 
 router = APIRouter(tags=["Packages"])
 
@@ -248,6 +249,8 @@ def serialize_voucher(voucher: VoucherPurchase) -> VoucherBatchItemResponse:
         status=voucher.status,
         payment_reference=voucher.payment_reference,
         created_at=voucher.created_at,
+        activated_at=voucher.activated_at,
+        expires_at=voucher.expires_at,
     )
 
 
@@ -541,12 +544,17 @@ def fetch_router_vouchers_into_database(
         profile = str(item.get("profile", "default"))
         package = packages_by_profile.get(profile)
         phone, comment_package_id, payment_reference = _router_comment_metadata(str(item.get("comment", "")))
-        disabled = str(item.get("disabled", "false")).lower() in {"true", "yes"}
-        router_status = "EXPIRED" if disabled else "ACTIVE" if code in active_codes else "PROVISIONED"
+        is_online = code in active_codes
+        has_router_usage = router_uptime_has_usage(item.get("uptime"))
         existing = session.exec(select(VoucherPurchase).where(VoucherPurchase.voucher_code == code)).first()
         if existing:
-            existing.status = router_status
             existing.profile = profile
+            update_voucher_lifecycle(
+                existing,
+                package_limit=package.limit if package else item.get("limit-uptime"),
+                is_online=is_online,
+                has_router_usage=has_router_usage,
+            )
             session.add(existing)
             updated += 1
             continue
@@ -563,8 +571,14 @@ def fetch_router_vouchers_into_database(
             amount=int(package.total or 0) if package else 0,
             devices=package.devices if package else profile_devices.get(profile, "1"),
             data=package.data if package else "Imported from MikroTik",
-            status=router_status,
+            status="PROVISIONED",
             payment_reference=payment_reference or "ROUTER-IMPORT",
+        )
+        update_voucher_lifecycle(
+            voucher,
+            package_limit=package.limit if package else item.get("limit-uptime"),
+            is_online=is_online,
+            has_router_usage=has_router_usage,
         )
         session.add(voucher)
         imported += 1
@@ -573,7 +587,7 @@ def fetch_router_vouchers_into_database(
         select(VoucherPurchase).where(VoucherPurchase.router_name == normalize_router_name(db_router.name))
     ).all()
     for voucher in database_vouchers:
-        if voucher.voucher_code not in router_codes and voucher.status in {"ACTIVE", "PROVISIONED"}:
+        if voucher.voucher_code not in router_codes and voucher.status in {"ONLINE", "OFFLINE", "ACTIVE", "PROVISIONED"}:
             voucher.status = "ROUTER_MISSING"
             session.add(voucher)
             updated += 1
@@ -606,6 +620,8 @@ def sync_database_vouchers_to_router(
     errors: list[str] = []
 
     for voucher in vouchers:
+        if voucher.status == "EXPIRED":
+            continue
         package = packages_by_id.get(voucher.package_id)
         package_data = serialize_package(package) if package else {
             "devices": voucher.devices or "1",
@@ -613,7 +629,8 @@ def sync_database_vouchers_to_router(
         }
         try:
             _upsert_hotspot_voucher(db_router, voucher, package_data)
-            voucher.status = "PROVISIONED"
+            if voucher.activated_at is None:
+                voucher.status = "PROVISIONED"
             synced += 1
         except Exception as exc:
             voucher.status = "ROUTER_SYNC_FAILED"
@@ -707,7 +724,23 @@ def list_branch_vouchers(
     if not router_names:
         return VoucherListResponse(success=True, total=0, vouchers=[])
 
-    filters = [col(VoucherPurchase.router_name).in_(router_names)]
+    branch_filter = col(VoucherPurchase.router_name).in_(router_names)
+    now = datetime.utcnow()
+    expiring = session.exec(
+        select(VoucherPurchase)
+        .where(branch_filter)
+        .where(VoucherPurchase.activated_at.is_not(None))
+        .where(VoucherPurchase.expires_at.is_not(None))
+        .where(VoucherPurchase.expires_at <= now)
+        .where(VoucherPurchase.status != "EXPIRED")
+    ).all()
+    for voucher in expiring:
+        voucher.status = "EXPIRED"
+        session.add(voucher)
+    if expiring:
+        session.commit()
+
+    filters = [branch_filter]
     if search and search.strip():
         pattern = f"%{search.strip()}%"
         filters.append(sa.or_(
@@ -717,7 +750,9 @@ def list_branch_vouchers(
         ))
     if status_filter and status_filter != "All":
         status_map = {
-            "Active": ["ACTIVE"],
+            "Active": ["ONLINE", "OFFLINE", "ACTIVE"],
+            "Online": ["ONLINE"],
+            "Offline": ["OFFLINE"],
             "Unactivated": ["CREATED", "PROVISIONED", "ROUTER_SYNC_FAILED", "ROUTER_MISSING"],
             "Expired": ["EXPIRED"],
         }
@@ -790,7 +825,7 @@ def branch_voucher_support_summary(
         success=True,
         total_vouchers=len(vouchers),
         total_amount=sum(voucher.amount for voucher in vouchers),
-        active_vouchers=len([voucher for voucher in vouchers if voucher.status == "ACTIVE"]),
+        active_vouchers=len([voucher for voucher in vouchers if voucher.status in {"ONLINE", "OFFLINE", "ACTIVE"}]),
         top_customers=top_customers,
         low_customers=low_customers,
         rare_customers=rare_customers,

@@ -50,7 +50,13 @@ add action=allow dst-host=*.airtel.africa
   they've authenticated on the hotspot.
 
 These entries are added automatically on every deploy (existing entries are
-left untouched, no duplicates are created). If the router uses a strict DNS
+left untouched, no duplicates are created). YouTube and advertiser destination
+hosts are deliberately excluded: before login, ad media is served only from
+the configured Cloudflare R2 host. The connected `alogin.html` page can request
+YouTube ads after MikroTik authentication has completed.
+
+Deploying this template also removes legacy YouTube/Google walled-garden rules
+created by older versions. If the router uses a strict DNS
 or firewall policy, also ensure hotspot clients can resolve DNS and make
 HTTPS connections to these hosts.
 

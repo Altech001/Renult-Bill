@@ -92,6 +92,8 @@ class VoucherBatchItemResponse(BaseModel):
     status: str
     payment_reference: Optional[str]
     created_at: datetime
+    activated_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 
 class VoucherBatchResponse(BaseModel):

@@ -20,7 +20,6 @@ from app.models.captive_portal import CaptivePortal
 from app.models.branch import Branch
 from app.models.notification import Notification
 from app.models.portal_payment import PortalPayment
-from app.models.portal_ad import PortalAd
 from app.models.router import Router
 from app.models.staff import Staff
 from app.models.user import User
@@ -661,22 +660,26 @@ def _render_portal_file(path: Path, router: Router) -> bytes:
 # before the visitor authenticates.
 _TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS: dict[str, list[str]] = {
     "auroaa": ["fonts.googleapis.com", "fonts.gstatic.com", "hspotagent.com"],
-    "adsmob": [
-        "youtube.com",
-        "youtu.be",
-        "youtube-nocookie.com",
-        "googlevideo.com",
-        "youtubei.googleapis.com",
-        "googleapis.com",
-        "ytimg.com",
-        "ggpht.com",
-        "googleusercontent.com",
-        "google.com",
-        "gstatic.com",
-        "doubleclick.net",
-        "googleadservices.com",
-    ],
 }
+
+# Older adsmob deployments added these broad hosts to the pre-login walled
+# garden. Remove them on the next deploy so normal YouTube browsing cannot
+# bypass hotspot authentication.
+_LEGACY_ADSMOB_WALLED_GARDEN_HOSTS: tuple[str, ...] = (
+    "youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "googlevideo.com",
+    "youtubei.googleapis.com",
+    "googleapis.com",
+    "ytimg.com",
+    "ggpht.com",
+    "googleusercontent.com",
+    "google.com",
+    "gstatic.com",
+    "doubleclick.net",
+    "googleadservices.com",
+)
 
 # Mobile money providers used by the Renult Pay gateway. Some MTN/Airtel
 # payment-confirmation flows open in the customer's browser, so these need
@@ -706,23 +709,6 @@ def _walled_garden_host_patterns(host: str) -> list[str]:
     return [host, f"*.{host}"]
 
 
-def _adsmob_campaign_hosts(session: Session | None, router: Router) -> list[str]:
-    if session is None:
-        return []
-    ads = session.exec(
-        select(PortalAd)
-        .where(PortalAd.router_id == router.id)
-        .where(PortalAd.enabled.is_(True))
-    ).all()
-    hosts: list[str] = []
-    for ad in ads:
-        for url in (ad.media_url, ad.target_url):
-            host = _host_from_url(url or "")
-            if host and host not in hosts:
-                hosts.append(host)
-    return hosts
-
-
 def _walled_garden_hosts_for_template(
     template: str,
     router: Router,
@@ -732,13 +718,11 @@ def _walled_garden_hosts_for_template(
     payment_host = _host_from_url(settings.renult_pay_base_url)
     r2_host = _host_from_url(settings.r2_public_base_url or settings.r2_endpoint_url or "")
 
-    campaign_hosts = _adsmob_campaign_hosts(session, router) if template == "adsmob" else []
     base_hosts = [
         api_host,
         payment_host,
         r2_host,
         *_MOBILE_MONEY_WALLED_GARDEN_HOSTS,
-        *campaign_hosts,
     ]
     hosts: list[str] = []
     for host in (*base_hosts, *_TEMPLATE_EXTRA_WALLED_GARDEN_HOSTS.get(template, [])):
@@ -832,9 +816,26 @@ def _set_hotspot_portal_configuration(
             updated_profiles.append(profile_name)
 
         walled_garden = api.get_resource("/ip/hotspot/walled-garden")
+        existing_entries = walled_garden.get()
+        if template == "adsmob":
+            legacy_patterns = {
+                pattern
+                for host in _LEGACY_ADSMOB_WALLED_GARDEN_HOSTS
+                for pattern in _walled_garden_host_patterns(host)
+            }
+            for item in existing_entries:
+                host = str(item.get("dst-host", "")).strip().lower()
+                entry_id = item.get(".id") or item.get("id")
+                if host in legacy_patterns and entry_id:
+                    walled_garden.remove(id=entry_id)
+            existing_entries = [
+                item
+                for item in existing_entries
+                if str(item.get("dst-host", "")).strip().lower() not in legacy_patterns
+            ]
         existing_hosts = {
             str(item.get("dst-host", "")).strip().lower()
-            for item in walled_garden.get()
+            for item in existing_entries
             if item.get("dst-host")
         }
         for host_pattern in _walled_garden_hosts_for_template(template, router, session):

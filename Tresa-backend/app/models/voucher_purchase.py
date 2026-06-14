@@ -27,3 +27,5 @@ class VoucherPurchase(SQLModel, table=True):
     status: str = Field(default="PAID", index=True)
     payment_reference: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    activated_at: Optional[datetime] = Field(default=None, index=True)
+    expires_at: Optional[datetime] = Field(default=None, index=True)

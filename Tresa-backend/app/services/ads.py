@@ -1,6 +1,7 @@
 import hashlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import Request
@@ -82,11 +83,38 @@ def public_portal_ad(ad: PortalAd) -> dict:
     }
 
 
-def get_public_router_ads(session: Session, router_name: str) -> list[dict]:
+def _is_cloudflare_media_url(url: str | None) -> bool:
+    if not url:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    configured_hosts = {
+        (urlparse(value).hostname or "").lower()
+        for value in (settings.r2_public_base_url, settings.r2_endpoint_url)
+        if value
+    }
+    return (
+        host in configured_hosts
+        or host.endswith(".r2.dev")
+        or host.endswith(".r2.cloudflarestorage.com")
+    )
+
+
+def get_public_router_ads(
+    session: Session,
+    router_name: str,
+    authenticated: bool = False,
+) -> list[dict]:
     router = find_router_by_name(session, router_name)
     if not router:
         return []
-    return [public_portal_ad(ad) for ad in get_router_ads(session, router.id, enabled_only=True)]
+    ads = get_router_ads(session, router.id, enabled_only=True)
+    if not authenticated:
+        ads = [
+            ad
+            for ad in ads
+            if ad.media_type != "youtube" and _is_cloudflare_media_url(ad.media_url)
+        ]
+    return [public_portal_ad(ad) for ad in ads]
 
 
 def create_router_ad(session: Session, router_id: UUID, payload: PortalAdCreate) -> PortalAd:
