@@ -158,6 +158,14 @@ class VoucherRouterSyncResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class VoucherExpiryCheckResponse(BaseModel):
+    success: bool
+    router_id: UUID
+    router_name: str
+    checked: int
+    expired: int
+
+
 class VoucherDeleteResponse(BaseModel):
     success: bool
     deleted: int

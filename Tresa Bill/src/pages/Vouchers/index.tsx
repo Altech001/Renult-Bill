@@ -14,6 +14,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     useBranchVouchers,
+    useCheckExpiredRouterVouchers,
+    useDeleteExpiredRouterVouchers,
     useDeleteRouterVoucher,
     useDeleteRouterVoucherBatch,
     useFetchRouterVouchers,
@@ -134,6 +136,8 @@ export default function VouchersIndex() {
     const deleteBatchMutation = useDeleteRouterVoucherBatch(branchId);
     const fetchRouterVouchers = useFetchRouterVouchers(selectedRouterId, branchId);
     const syncRouterVouchers = useSyncRouterVouchers(selectedRouterId, branchId);
+    const checkExpiredVouchers = useCheckExpiredRouterVouchers(selectedRouterId, branchId);
+    const deleteExpiredVouchers = useDeleteExpiredRouterVouchers(selectedRouterId, branchId);
     const routerPackages: InternetPackage[] = useMemo(() => {
         const items = routerPackagesResponse?.data.voucher || [];
         return items
@@ -657,6 +661,43 @@ export default function VouchersIndex() {
         }
     };
 
+    const handleCheckExpiredVouchers = async () => {
+        if (!selectedRouterId) return;
+        try {
+            const result = await checkExpiredVouchers.mutateAsync();
+            if (result.expired > 0) {
+                toast.warning(
+                    `${result.expired} of ${result.checked} activated vouchers on ${result.router_name} are expired.`,
+                );
+            } else {
+                toast.success(`No expired activated vouchers found on ${result.router_name}.`);
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to check expired vouchers.");
+        }
+    };
+
+    const handleDeleteExpiredVouchers = async () => {
+        if (!selectedRouterId || !selectedRouter) return;
+        const confirmed = window.confirm(
+            `Delete all expired, previously activated vouchers from ${selectedRouter.name}, including MikroTik sessions and database records? This cannot be undone.`,
+        );
+        if (!confirmed) return;
+
+        try {
+            const result = await deleteExpiredVouchers.mutateAsync();
+            if (result.deleted === 0) {
+                toast.success(`No expired activated vouchers found on ${selectedRouter.name}.`);
+                return;
+            }
+            toast.success(
+                `Deleted ${result.deleted} expired vouchers (${result.router_deleted} removed from MikroTik).`,
+            );
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to delete expired vouchers.");
+        }
+    };
+
     const getStatusBadge = (status: Voucher['status']) => {
         switch (status) {
             case "Online":
@@ -699,6 +740,28 @@ export default function VouchersIndex() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCheckExpiredVouchers}
+                            disabled={!selectedRouterId || checkExpiredVouchers.isPending || deleteExpiredVouchers.isPending}
+                            className="gap-2 text-xs font-semibold h-9 flex-1 sm:flex-initial"
+                            title="Check first-activated vouchers whose package time has ended"
+                        >
+                            {checkExpiredVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Check Expired
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleDeleteExpiredVouchers}
+                            disabled={!selectedRouterId || deleteExpiredVouchers.isPending || checkExpiredVouchers.isPending}
+                            className="gap-2 text-xs font-semibold h-9 flex-1 sm:flex-initial"
+                            title="Delete expired activated vouchers from MikroTik and the database"
+                        >
+                            {deleteExpiredVouchers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            Delete Expired
+                        </Button>
                         <Button
                             variant="destructive"
                             size="sm"

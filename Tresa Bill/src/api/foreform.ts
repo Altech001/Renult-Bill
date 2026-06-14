@@ -708,6 +708,14 @@ export interface VoucherRouterSyncResponse {
   errors: string[];
 }
 
+export interface VoucherExpiryCheckResponse {
+  success: boolean;
+  router_id: string;
+  router_name: string;
+  checked: number;
+  expired: number;
+}
+
 export interface VoucherDeleteResponse {
   success: boolean;
   deleted: number;
@@ -1153,6 +1161,10 @@ export const renultApi = {
       apiRequest<VoucherRouterSyncResponse>(`/routers/${routerId}/vouchers/fetch`, { method: "POST" }),
     syncVouchers: (routerId: string) =>
       apiRequest<VoucherRouterSyncResponse>(`/routers/${routerId}/vouchers/sync`, { method: "POST" }),
+    checkExpiredVouchers: (routerId: string) =>
+      apiRequest<VoucherExpiryCheckResponse>(`/routers/${routerId}/vouchers/expired/check`, { method: "POST" }),
+    deleteExpiredVouchers: (routerId: string) =>
+      apiRequest<VoucherDeleteResponse>(`/routers/${routerId}/vouchers/expired`, { method: "DELETE" }),
     deleteVoucher: (routerId: string, voucherCode: string) =>
       apiRequest<VoucherDeleteResponse>(`/routers/${routerId}/vouchers/${encodeURIComponent(voucherCode)}`, { method: "DELETE" }),
     deleteVoucherBatch: (routerId: string, batchId: string) =>

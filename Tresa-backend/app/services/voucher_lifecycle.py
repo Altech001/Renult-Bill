@@ -38,14 +38,18 @@ def duration_to_timedelta(value: str | None) -> timedelta | None:
     return timedelta(seconds=seconds) if seconds > 0 else None
 
 
-def router_uptime_has_usage(value: object) -> bool:
+def router_uptime_duration(value: object) -> timedelta | None:
     normalized = str(value or "").strip().lower()
     if not normalized:
-        return False
+        return None
     duration = duration_to_timedelta(normalized)
     if duration is not None:
-        return duration.total_seconds() > 0
-    return normalized not in {"0", "00:00:00", "0s"}
+        return duration if duration.total_seconds() > 0 else None
+    return timedelta(microseconds=1) if normalized not in {"0", "00:00:00", "0s"} else None
+
+
+def router_uptime_has_usage(value: object) -> bool:
+    return router_uptime_duration(value) is not None
 
 
 def update_voucher_lifecycle(
@@ -54,11 +58,12 @@ def update_voucher_lifecycle(
     package_limit: str | None,
     is_online: bool,
     has_router_usage: bool,
+    router_uptime: timedelta | None = None,
     now: datetime | None = None,
 ) -> str:
     current_time = now or datetime.utcnow()
     if voucher.activated_at is None and (is_online or has_router_usage):
-        voucher.activated_at = current_time
+        voucher.activated_at = current_time - router_uptime if router_uptime else current_time
 
     if voucher.activated_at is not None and voucher.expires_at is None:
         duration = duration_to_timedelta(package_limit)

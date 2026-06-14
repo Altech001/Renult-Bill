@@ -28,6 +28,7 @@ from app.schemas.package import (
     VoucherBatchItemResponse,
     VoucherBatchResponse,
     VoucherCustomerInsight,
+    VoucherExpiryCheckResponse,
     VoucherListResponse,
     VoucherJobCreatedResponse,
     VoucherJobResponse,
@@ -52,7 +53,7 @@ from app.services.routers.Packages import (
     update_router_package,
 )
 from app.services.telegram import send_branch_event
-from app.services.voucher_lifecycle import router_uptime_has_usage, update_voucher_lifecycle
+from app.services.voucher_lifecycle import router_uptime_duration, update_voucher_lifecycle
 
 router = APIRouter(tags=["Packages"])
 
@@ -520,11 +521,12 @@ def fetch_router_vouchers_into_database(
     if not result["connected"]:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=result["error"] or "Router is unavailable")
     active_result = get_active_hotspot_users(db_router)
-    active_codes = {
-        str(item.get("user") or item.get("name") or "").strip()
+    active_users = {
+        str(item.get("user") or item.get("name") or "").strip(): item
         for item in active_result.get("active_users", [])
         if item.get("user") or item.get("name")
     }
+    active_codes = set(active_users)
 
     packages = session.exec(select(RouterPackage).where(RouterPackage.router_id == db_router.id)).all()
     packages_by_profile = {package.profile: package for package in packages}
@@ -545,7 +547,10 @@ def fetch_router_vouchers_into_database(
         package = packages_by_profile.get(profile)
         phone, comment_package_id, payment_reference = _router_comment_metadata(str(item.get("comment", "")))
         is_online = code in active_codes
-        has_router_usage = router_uptime_has_usage(item.get("uptime"))
+        uptime = router_uptime_duration(
+            item.get("uptime") or active_users.get(code, {}).get("uptime")
+        )
+        has_router_usage = uptime is not None
         existing = session.exec(select(VoucherPurchase).where(VoucherPurchase.voucher_code == code)).first()
         if existing:
             existing.profile = profile
@@ -554,6 +559,7 @@ def fetch_router_vouchers_into_database(
                 package_limit=package.limit if package else item.get("limit-uptime"),
                 is_online=is_online,
                 has_router_usage=has_router_usage,
+                router_uptime=uptime,
             )
             session.add(existing)
             updated += 1
@@ -579,6 +585,7 @@ def fetch_router_vouchers_into_database(
             package_limit=package.limit if package else item.get("limit-uptime"),
             is_online=is_online,
             has_router_usage=has_router_usage,
+            router_uptime=uptime,
         )
         session.add(voucher)
         imported += 1
@@ -654,6 +661,83 @@ def _delete_router_voucher_codes(router: Router, voucher_codes: list[str]) -> tu
     return _delete_hotspot_vouchers(router, voucher_codes)
 
 
+def _mark_expired_router_vouchers(session: Session, router_name: str) -> tuple[int, list[VoucherPurchase]]:
+    now = datetime.utcnow()
+    activated = session.exec(
+        select(VoucherPurchase)
+        .where(VoucherPurchase.router_name == router_name)
+        .where(VoucherPurchase.activated_at.is_not(None))
+    ).all()
+    expired = [
+        voucher
+        for voucher in activated
+        if voucher.expires_at is not None and voucher.expires_at <= now
+    ]
+    for voucher in expired:
+        voucher.status = "EXPIRED"
+        session.add(voucher)
+    if expired:
+        session.commit()
+    return len(activated), expired
+
+
+@router.post("/routers/{router_id}/vouchers/expired/check", response_model=VoucherExpiryCheckResponse)
+def check_expired_router_vouchers(
+    router_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+) -> VoucherExpiryCheckResponse:
+    db_router = check_router_ownership(session, router_id, user.id)
+    fetch_router_vouchers_into_database(router_id, user, session)
+    checked, expired = _mark_expired_router_vouchers(
+        session,
+        normalize_router_name(db_router.name),
+    )
+    return VoucherExpiryCheckResponse(
+        success=True,
+        router_id=db_router.id,
+        router_name=db_router.name,
+        checked=checked,
+        expired=len(expired),
+    )
+
+
+@router.delete("/routers/{router_id}/vouchers/expired", response_model=VoucherDeleteResponse)
+def delete_expired_router_vouchers(
+    router_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+) -> VoucherDeleteResponse:
+    db_router = check_router_ownership(session, router_id, user.id)
+    fetch_router_vouchers_into_database(router_id, user, session)
+    _, expired = _mark_expired_router_vouchers(
+        session,
+        normalize_router_name(db_router.name),
+    )
+    voucher_codes = [voucher.voucher_code for voucher in expired]
+    if not voucher_codes:
+        return VoucherDeleteResponse(success=True, deleted=0, router_deleted=0)
+
+    router_deleted, errors = _delete_router_voucher_codes(db_router, voucher_codes)
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": "Failed to delete expired vouchers from router", "errors": errors},
+        )
+
+    session.exec(
+        sa.delete(VoucherPurchase)
+        .where(VoucherPurchase.router_name == normalize_router_name(db_router.name))
+        .where(col(VoucherPurchase.voucher_code).in_(voucher_codes))
+    )
+    session.commit()
+    return VoucherDeleteResponse(
+        success=True,
+        deleted=len(voucher_codes),
+        router_deleted=router_deleted,
+    )
+
+
 @router.delete("/routers/{router_id}/vouchers/{voucher_code}", response_model=VoucherDeleteResponse)
 def delete_router_voucher(
     router_id: UUID,
@@ -725,20 +809,8 @@ def list_branch_vouchers(
         return VoucherListResponse(success=True, total=0, vouchers=[])
 
     branch_filter = col(VoucherPurchase.router_name).in_(router_names)
-    now = datetime.utcnow()
-    expiring = session.exec(
-        select(VoucherPurchase)
-        .where(branch_filter)
-        .where(VoucherPurchase.activated_at.is_not(None))
-        .where(VoucherPurchase.expires_at.is_not(None))
-        .where(VoucherPurchase.expires_at <= now)
-        .where(VoucherPurchase.status != "EXPIRED")
-    ).all()
-    for voucher in expiring:
-        voucher.status = "EXPIRED"
-        session.add(voucher)
-    if expiring:
-        session.commit()
+    for router_name in router_names:
+        _mark_expired_router_vouchers(session, router_name)
 
     filters = [branch_filter]
     if search and search.strip():

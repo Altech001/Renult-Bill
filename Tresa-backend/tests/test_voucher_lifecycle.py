@@ -41,6 +41,18 @@ class VoucherLifecycleTests(unittest.TestCase):
         self.assertIsNone(voucher.activated_at)
         self.assertIsNone(voucher.expires_at)
 
+    def test_expired_status_requires_first_activation(self) -> None:
+        voucher = make_voucher()
+        voucher.expires_at = datetime(2026, 6, 15, 9, 0)
+        update_voucher_lifecycle(
+            voucher,
+            package_limit="1hour",
+            is_online=False,
+            has_router_usage=False,
+            now=datetime(2026, 6, 15, 10, 0),
+        )
+        self.assertEqual(voucher.status, "PROVISIONED")
+
     def test_first_use_records_expiry_and_tracks_connection(self) -> None:
         voucher = make_voucher()
         activated = datetime(2026, 6, 15, 10, 0)
@@ -71,6 +83,21 @@ class VoucherLifecycleTests(unittest.TestCase):
             has_router_usage=True,
             now=activated + timedelta(hours=1),
         )
+        self.assertEqual(voucher.status, "EXPIRED")
+
+    def test_existing_router_uptime_restores_original_activation(self) -> None:
+        voucher = make_voucher()
+        checked_at = datetime(2026, 6, 15, 12, 0)
+        update_voucher_lifecycle(
+            voucher,
+            package_limit="2hours",
+            is_online=False,
+            has_router_usage=True,
+            router_uptime=timedelta(hours=3),
+            now=checked_at,
+        )
+        self.assertEqual(voucher.activated_at, checked_at - timedelta(hours=3))
+        self.assertEqual(voucher.expires_at, checked_at - timedelta(hours=1))
         self.assertEqual(voucher.status, "EXPIRED")
 
 

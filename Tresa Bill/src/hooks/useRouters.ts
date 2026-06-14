@@ -325,6 +325,30 @@ export function useSyncRouterVouchers(routerId: string, branchId: string) {
   });
 }
 
+export function useCheckExpiredRouterVouchers(routerId: string, branchId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => renultApi.packages.checkExpiredVouchers(routerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["routerVouchers", routerId] });
+      queryClient.invalidateQueries({ queryKey: ["branchVouchers", branchId] });
+      queryClient.invalidateQueries({ queryKey: ["voucherSupportSummary", branchId] });
+    },
+  });
+}
+
+export function useDeleteExpiredRouterVouchers(routerId: string, branchId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => renultApi.packages.deleteExpiredVouchers(routerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["routerVouchers", routerId] });
+      queryClient.invalidateQueries({ queryKey: ["branchVouchers", branchId] });
+      queryClient.invalidateQueries({ queryKey: ["voucherSupportSummary", branchId] });
+    },
+  });
+}
+
 export function useDeleteRouterVoucher(branchId: string) {
   const queryClient = useQueryClient();
   return useMutation({
