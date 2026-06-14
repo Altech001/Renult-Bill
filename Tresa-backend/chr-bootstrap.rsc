@@ -1,6 +1,6 @@
 # ============================================================
-# TRESA BILL — CHR CONCENTRATOR BOOTSTRAP v7
-# Platform: Renult / Tresa Bill
+# RENULT BILLING — CHR CONCENTRATOR BOOTSTRAP v7
+# Platform: Renult / RENULT BILLING
 # Run once on the Cloud Hosted Router (CHR).
 # Safe to re-run — every step is idempotent.
 # ============================================================
@@ -13,7 +13,7 @@
 :local tunnelSubnet  "10.0.0.0/16"
 
 :put "========================================================"
-:put " TRESA BILL CHR CONCENTRATOR BOOTSTRAP v7"
+:put " RENULT BILLING CHR CONCENTRATOR BOOTSTRAP v7"
 :put (" Running on: " . $chrPublicIp)
 :put "========================================================"
 
@@ -249,7 +249,7 @@
 :put "Step 9: All checks passed."
 
 :put "========================================================"
-:put " TRESA BILL CHR CONCENTRATOR — READY"
+:put " RENULT BILLING CHR CONCENTRATOR — READY"
 :put (" Public IP         : " . $chrPublicIp)
 :put (" Backend URL       : https://" . $backendHost)
 :local reachableStr "no (check internet/DNS)"
