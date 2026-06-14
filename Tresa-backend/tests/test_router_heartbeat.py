@@ -33,6 +33,24 @@ class RouterHeartbeatTests(unittest.TestCase):
         self.assertIn("/api/routers/heartbeat", script)
         self.assertIn("interval=1m", script)
 
+    def test_setup_script_configures_sstp_fallover(self) -> None:
+        router = Router(
+            id=uuid4(),
+            branch_id=uuid4(),
+            name="Test Router",
+            host="127.0.0.1",
+        )
+        script = build_secure_setup_script(
+            router,
+            "https://renult.example.com",
+            include_walled_garden=True,
+        )
+        self.assertIn('name="tresa-tunnel-sstp"', script)
+        self.assertIn('name="TresaSstpFallover"', script)
+        self.assertIn('name="TresaTunnel"', script)
+        self.assertIn("in-interface-list=TresaTunnel", script)
+        self.assertIn("in-interface-list=!TresaTunnel", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -103,6 +103,7 @@ def enable_snmp(router: Router) -> None:
 
         all_interfaces = api.get_resource("/interface").get()
         tunnel_exists = any(i.get("name") == "tresa-tunnel" for i in all_interfaces)
+        tunnel_list_exists = bool(api.get_resource("/interface/list").get(name="TresaTunnel"))
 
         rule_params: dict[str, str] = {
             "chain": "input",
@@ -111,7 +112,11 @@ def enable_snmp(router: Router) -> None:
             "action": "accept",
             "comment": comment,
         }
-        if tunnel_exists:
+        if tunnel_list_exists:
+            # Router was provisioned with the SSTP fallover script — match
+            # either tunnel transport via the shared interface list.
+            rule_params["in-interface-list"] = "TresaTunnel"
+        elif tunnel_exists:
             rule_params["in-interface"] = "tresa-tunnel"
         else:
             # Tunnel not provisioned yet; restrict by source address instead.

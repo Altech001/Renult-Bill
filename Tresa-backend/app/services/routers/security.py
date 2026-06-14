@@ -219,7 +219,8 @@ def build_secure_setup_script(
         :error "Backend rejected credential update"
     }}
 
-    # 4. Recreate and verify the L2TP/IPsec tunnel.
+    # 4. Recreate the L2TP/IPsec tunnel (primary) and the SSTP tunnel
+    # (fallover), then verify at least one of them connects.
     :put "Step 4: Creating L2TP/IPsec tunnel to CHR (waiting up to 30s to connect)..."
     :foreach oldTunnel in=[/interface l2tp-client find where name="tresa-tunnel"] do={{
         /interface l2tp-client remove $oldTunnel
@@ -230,7 +231,20 @@ def build_secure_setup_script(
         :put "Step 4: ERROR - the tresa-tunnel L2TP-client interface was not created."
         :error "Tunnel interface was not created"
     }}
+
+    :put "Step 4: Creating SSTP fallover tunnel (disabled until needed)..."
+    :foreach oldSstp in=[/interface sstp-client find where name="tresa-tunnel-sstp"] do={{
+        /interface sstp-client remove $oldSstp
+    }}
+    /interface sstp-client add name="tresa-tunnel-sstp" connect-to=$chrHost user=$pppUser password=$pppPass authentication=mschap2 verify-server-certificate=no add-default-route=no disabled=yes comment="Tresa Bill SSTP Fallover - DO NOT DELETE"
+    :local sstpId [/interface sstp-client find where name="tresa-tunnel-sstp"]
+    :if ([:len $sstpId] = 0) do={{
+        :put "Step 4: ERROR - the tresa-tunnel-sstp SSTP-client interface was not created."
+        :error "SSTP fallover interface was not created"
+    }}
+
     :local tunnelUp false
+    :local tunnelTransport "L2TP/IPsec"
     :local tunnelAttempts 0
     :while (($tunnelUp = false) && ($tunnelAttempts < 6)) do={{
         :delay 5s
@@ -245,22 +259,79 @@ def build_secure_setup_script(
             :local monArr [/interface l2tp-client monitor $tunnelId once as-value]
             :if ([:len $monArr] > 0) do={{ :set tunnelStatus ($monArr->0->"status") }}
         }} on-error={{}}
-        :put ("Step 4: ERROR - tresa-tunnel did not connect to " . $chrHost . " after 30s (status: " . $tunnelStatus . "). Check that UDP 500/4500/1701 and ESP are reachable and the IPsec secret matches the CHR.")
-        :error "Tunnel failed to connect"
+        :put ("Step 4: L2TP did not connect to " . $chrHost . " after 30s (status: " . $tunnelStatus . "). UDP 500/4500/1701 or ESP may be blocked - trying SSTP fallover (TCP/443)...")
+        /interface sstp-client enable $sstpId
+        :local sstpAttempts 0
+        :while (($tunnelUp = false) && ($sstpAttempts < 6)) do={{
+            :delay 5s
+            :set sstpAttempts ($sstpAttempts + 1)
+            :if ([/interface sstp-client get $sstpId running] = true) do={{
+                :set tunnelUp true
+                :set tunnelTransport "SSTP (fallover)"
+            }}
+        }}
+        :if ($tunnelUp = false) do={{
+            :put ("Step 4: ERROR - neither L2TP (UDP 500/4500/1701 + ESP) nor SSTP (TCP/443) connected to " . $chrHost . ". Check internet/firewall and that the CHR has both servers enabled.")
+            :error "Tunnel failed to connect"
+        }}
     }}
+    :put ("Step 4: Connected via " . $tunnelTransport . ".")
+
+    # 4b. Group both tunnel interfaces into one list so firewall rules and
+    # CHR access keep working over whichever transport is active.
+    :if ([:len [/interface list find where name="TresaTunnel"]] = 0) do={{
+        /interface list add name="TresaTunnel" comment="Tresa Bill - DO NOT DELETE"
+    }}
+    :if ([:len [/interface list member find where interface="tresa-tunnel" list="TresaTunnel"]] = 0) do={{
+        /interface list member add interface="tresa-tunnel" list="TresaTunnel"
+    }}
+    :if ([:len [/interface list member find where interface="tresa-tunnel-sstp" list="TresaTunnel"]] = 0) do={{
+        /interface list member add interface="tresa-tunnel-sstp" list="TresaTunnel"
+    }}
+
+    # 4c. Fallover watchdog: every 60s, enable the SSTP client if the L2TP
+    # tunnel is down, and disable it again once L2TP recovers. Only one
+    # tunnel is ever active at a time.
+    :foreach oldSched in=[/system scheduler find where name="TresaSstpFallover"] do={{
+        /system scheduler remove $oldSched
+    }}
+    /system scheduler add name="TresaSstpFallover" interval=60s on-event={{
+        :local l2tpId [/interface l2tp-client find where name="tresa-tunnel"]
+        :local sstpId [/interface sstp-client find where name="tresa-tunnel-sstp"]
+        :if (([:len $l2tpId] > 0) && ([:len $sstpId] > 0)) do={{
+            :local l2tpUp [/interface l2tp-client get $l2tpId running]
+            :local sstpDisabled [/interface sstp-client get $sstpId disabled]
+            :if ($l2tpUp = true) do={{
+                :if ($sstpDisabled = false) do={{
+                    /interface sstp-client disable $sstpId
+                    :log info "Tresa: L2TP tunnel up - disabled SSTP fallover"
+                }}
+            }} else={{
+                :if ($sstpDisabled = true) do={{
+                    /interface sstp-client enable $sstpId
+                    :log warning "Tresa: L2TP tunnel down - enabled SSTP fallover"
+                }}
+            }}
+        }}
+    }} comment="Tresa Bill: SSTP fallover watchdog"
 
     # 5. Restrict API access and install idempotent firewall rules.
     :put "Step 5: Configuring firewall, API access and SNMP..."
-    :if (([:len [/interface list find where name="LAN"]] > 0) && ([:len [/interface list member find where interface="tresa-tunnel"]] = 0)) do={{
-        /interface list member add interface="tresa-tunnel" list=LAN comment="Tresa Bill - DO NOT DELETE"
+    :if ([:len [/interface list find where name="LAN"]] > 0) do={{
+        :if ([:len [/interface list member find where interface="tresa-tunnel" list="LAN"]] = 0) do={{
+            /interface list member add interface="tresa-tunnel" list=LAN comment="Tresa Bill - DO NOT DELETE"
+        }}
+        :if ([:len [/interface list member find where interface="tresa-tunnel-sstp" list="LAN"]] = 0) do={{
+            /interface list member add interface="tresa-tunnel-sstp" list=LAN comment="Tresa Bill - DO NOT DELETE"
+        }}
     }}
     /ip service set api disabled=no port=8728 address=10.0.0.0/16,192.168.88.0/24
     /ip service set api-ssl disabled=yes
     :foreach ruleId in=[/ip firewall filter find where comment~"Tresa:"] do={{ /ip firewall filter remove $ruleId }}
-    /ip firewall filter add chain=input in-interface=!tresa-tunnel src-address-list=tresa_blacklist action=drop comment="Tresa: block blacklisted"
-    /ip firewall filter add chain=input in-interface=!tresa-tunnel protocol=tcp dst-port=8728 connection-limit=5,32 action=add-src-to-address-list address-list=tresa_blacklist address-list-timeout=30d comment="Tresa: brute force protection"
-    /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=tcp dst-port=8728 action=accept comment="Tresa: allow tunnel traffic"
-    /ip firewall filter add chain=input in-interface="tresa-tunnel" protocol=udp dst-port=161 action=accept comment="Tresa: allow SNMP monitoring"
+    /ip firewall filter add chain=input in-interface-list=!TresaTunnel src-address-list=tresa_blacklist action=drop comment="Tresa: block blacklisted"
+    /ip firewall filter add chain=input in-interface-list=!TresaTunnel protocol=tcp dst-port=8728 connection-limit=5,32 action=add-src-to-address-list address-list=tresa_blacklist address-list-timeout=30d comment="Tresa: brute force protection"
+    /ip firewall filter add chain=input in-interface-list=TresaTunnel protocol=tcp dst-port=8728 action=accept comment="Tresa: allow tunnel traffic"
+    /ip firewall filter add chain=input in-interface-list=TresaTunnel protocol=udp dst-port=161 action=accept comment="Tresa: allow SNMP monitoring"
     :local allowRule [/ip firewall filter find where comment="Tresa: allow tunnel traffic"]
     :if ([:len $allowRule] > 0) do={{ :do {{ /ip firewall filter move $allowRule 0 }} on-error={{}} }}
     :local snmpAllowRule [/ip firewall filter find where comment="Tresa: allow SNMP monitoring"]
@@ -312,8 +383,11 @@ def build_secure_setup_script(
         :put ("Confirmation response: " . $confirmData)
         :error "Backend did not return a valid tunnel IP and NAT port"
     }}
-    :if ([/interface l2tp-client get $tunnelId running] != true) do={{
-        :put "Step 6: ERROR - tresa-tunnel dropped after the provisioning confirmation step."
+    :local finalTunnelUp false
+    :if ([/interface l2tp-client get $tunnelId running] = true) do={{ :set finalTunnelUp true }}
+    :if ([/interface sstp-client get $sstpId running] = true) do={{ :set finalTunnelUp true }}
+    :if ($finalTunnelUp = false) do={{
+        :put "Step 6: ERROR - tunnel (L2TP or SSTP) dropped after the provisioning confirmation step."
         :error "Final tunnel verification failed"
     }}
 
@@ -353,7 +427,8 @@ def build_secure_setup_script(
     :put (" Router ID    : " . $pppUser)
     :put (" Tunnel IP    : " . $tunnelIp)
     :put (" NAT Port     : " . $natPort)
-    :put (" Tunnel       : Connected")
+    :put (" Tunnel       : Connected via " . $tunnelTransport)
+    :put " SSTP Fallover: configured (auto-switches if L2TP drops)"
     :put (" API User     : " . $apiOk)
     :put (" SNMP         : " . $snmpOk)
     :put (" Walled Garden: {wg_status}")

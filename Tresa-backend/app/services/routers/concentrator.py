@@ -449,16 +449,21 @@ def register_router(
         tunnel_ip = _allocate_tunnel_ip(session)
         api_password = secrets.token_urlsafe(24)
         with chr_connection() as api:
-            existing = api.get_resource("/ppp/secret").get(name=ppp_username)
+            secret_resource = api.get_resource("/ppp/secret")
+            existing = secret_resource.get(name=ppp_username)
             if not existing:
-                api.get_resource("/ppp/secret").call("add", {
+                secret_resource.call("add", {
                     "name": ppp_username,
                     "password": ppp_password,
-                    "service": "l2tp",
+                    # "any" lets the same credentials authenticate over L2TP
+                    # or SSTP, so the SSTP fallover tunnel can log in too.
+                    "service": "any",
                     "local-address": settings.chr_tunnel_local_address,
                     "remote-address": tunnel_ip,
                     "comment": f"Tresa router {router.id}",
                 })
+            elif existing[0].get("service") != "any":
+                secret_resource.set(id=existing[0]["id"], service="any")
         router.ppp_username = ppp_username
         router.ppp_password_encrypted = encrypt_secret(ppp_password)
         router.tunnel_ip = tunnel_ip
@@ -468,6 +473,11 @@ def register_router(
     else:
         ppp_password = decrypt_secret(router.ppp_password_encrypted)
         api_password = decrypt_secret(router.api_password_encrypted)
+        with chr_connection() as api:
+            secret_resource = api.get_resource("/ppp/secret")
+            existing = secret_resource.get(name=router.ppp_username)
+            if existing and existing[0].get("service") != "any":
+                secret_resource.set(id=existing[0]["id"], service="any")
 
     router.mac_address = mac_address
     router.model = model[:255]
@@ -568,7 +578,7 @@ def confirm_router(session: Session, token: str, mac: str) -> Router:
     with chr_connection() as api:
         active = api.get_resource("/ppp/active").get(name=router.ppp_username)
         if not active:
-            raise RuntimeError("L2TP tunnel is not active on the CHR")
+            raise RuntimeError("Tunnel is not active on the CHR")
         tunnel_ip = str(active[0].get("address") or router.tunnel_ip)
         return provision_router(session, router, tunnel_ip, api=api)
 
